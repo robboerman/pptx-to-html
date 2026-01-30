@@ -26,9 +26,10 @@ export function getSvgPathForShape(type: string): string {
     case "cloud":
       return "PATH M20,60 C10,60 10,40 25,40 C30,20 50,20 55,35 C70,30 80,40 80,50 C90,50 90,70 75,70 H25 Z";
 
-    // ▸ Straight connector (line)
+    // ▸ Straight connector / line
+    case "line":
     case "straightConnector1":
-      return "LINE_ARROW 0,50 100,50";
+      return "LINE_ARROW 0,0 100,100";
 
     // ▸ Bent connectors
     case "bentConnector2":

@@ -45,6 +45,39 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
       box-sizing: border-box;"></div>`;
     }
 
+    if (el.shapeType === "line") {
+        const sw = el.strokeWidth && Number.isFinite(el.strokeWidth) && el.strokeWidth > 0
+          ? el.strokeWidth : 1;
+        const strokeColor = el.borderColor && el.borderColor !== "transparent"
+          ? el.borderColor : (el.fillColor !== "transparent" ? el.fillColor : "#000");
+        const isVertical = width < 1;
+        const isHorizontal = height < 1;
+
+        if (isVertical) {
+            return `<div style="
+              position: absolute;
+              left: ${x - sw / 2}px;
+              top: ${y}px;
+              width: ${sw}px;
+              height: ${Math.max(height, sw)}px;
+              background-color: ${strokeColor};
+              ${rotationStyle}
+            "></div>`;
+        }
+        if (isHorizontal) {
+            return `<div style="
+              position: absolute;
+              left: ${x}px;
+              top: ${y - sw / 2}px;
+              width: ${Math.max(width, sw)}px;
+              height: ${sw}px;
+              background-color: ${strokeColor};
+              ${rotationStyle}
+            "></div>`;
+        }
+        // Diagonal lines fall through to SVG rendering below
+    }
+
     if (el.shapeType === "roundRect") {
         // Compute corner radius from the adjustment value if available,
         // otherwise use a sensible default based on the smaller dimension.
