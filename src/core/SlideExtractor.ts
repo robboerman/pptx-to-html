@@ -109,7 +109,7 @@ export class SlideExtractor {
 
       const masterGeom = this.extractPlaceholderGeom(masterSpTree);
       const layoutGeom = this.extractPlaceholderGeom(layoutSpTree);
-      const mergedGeom: Record<string, { x: number; y: number; cx: number; cy: number }> = { ...masterGeom, ...layoutGeom };
+      const mergedGeom: Record<string, { x: number; y: number; cx: number; cy: number; fontSize?: number }> = { ...masterGeom, ...layoutGeom };
       const slideText = TextExtractor.extract(spTree, themeColors, { context: "slide", placeholderGeom: mergedGeom });
       const slideImages = await ImageExtractor.extract(spTree, relsXml, this.zip, "ppt/slides");
       const slideTables = TableExtractor.extract(spTree, themeColors, themeTableStyles);
@@ -149,24 +149,38 @@ export class SlideExtractor {
     return resolved.join("/");
   }
 
-  private extractPlaceholderGeom(spTree: Element | null): Record<string, { x: number; y: number; cx: number; cy: number }> {
-    const map: Record<string, { x: number; y: number; cx: number; cy: number }> = {};
+  private extractPlaceholderGeom(spTree: Element | null): Record<string, { x: number; y: number; cx: number; cy: number; fontSize?: number }> {
+    const map: Record<string, { x: number; y: number; cx: number; cy: number; fontSize?: number }> = {};
     if (!spTree) return map;
     const shapes = spTree.getElementsByTagNameNS("*", "sp");
     for (const shape of Array.from(shapes)) {
       const nvPr = shape.getElementsByTagNameNS("*", "nvPr")[0] ?? null;
       const ph = nvPr?.getElementsByTagNameNS("*", "ph")[0] ?? null;
       const idx = ph?.getAttribute("idx") || undefined;
-      if (!idx) continue;
+      const phType = ph?.getAttribute("type") || undefined;
+      const key = idx || phType;
+      if (!key) continue;
       const xfrm = shape.getElementsByTagNameNS("*", "xfrm")[0] ?? null;
       const off = xfrm?.getElementsByTagNameNS("*", "off")[0] ?? null;
       const ext = xfrm?.getElementsByTagNameNS("*", "ext")[0] ?? null;
       if (!off || !ext) continue;
-      map[idx] = {
+
+      // Extract default font size from lstStyle > lvl1pPr > defRPr
+      let fontSize: number | undefined = undefined;
+      const txBody = shape.getElementsByTagNameNS("*", "txBody")[0] ?? null;
+      const defRPr = txBody?.querySelector("*|lstStyle *|defRPr");
+      const sz = defRPr?.getAttribute("sz");
+      if (sz) {
+        const n = parseInt(sz, 10);
+        if (Number.isFinite(n)) fontSize = n / 100;
+      }
+
+      map[key] = {
         x: XmlHelper.getAttrAsNumber(off, "x"),
         y: XmlHelper.getAttrAsNumber(off, "y"),
         cx: XmlHelper.getAttrAsNumber(ext, "cx"),
         cy: XmlHelper.getAttrAsNumber(ext, "cy"),
+        fontSize,
       };
     }
     return map;

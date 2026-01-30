@@ -14,7 +14,7 @@ export class TextExtractor {
   static extract(
     spTree: Element | null,
     themeColors: Record<string, string>,
-    opts: { context?: "slide" | "layout" | "master"; placeholderGeom?: Record<string, { x: number; y: number; cx: number; cy: number }> } = {}
+    opts: { context?: "slide" | "layout" | "master"; placeholderGeom?: Record<string, { x: number; y: number; cx: number; cy: number; fontSize?: number }> } = {}
   ): TextElement[] {
     if (!spTree) return [];
 
@@ -233,11 +233,17 @@ export class TextExtractor {
         cy = XmlHelper.getAttrAsNumber(ext, "cy");
       } else if (opts.placeholderGeom) {
         const phIdx = ph?.getAttribute("idx") || undefined;
-        const g = phIdx ? opts.placeholderGeom[phIdx] : undefined;
+        const phType = ph?.getAttribute("type") || undefined;
+        const g = (phIdx ? opts.placeholderGeom[phIdx] : undefined)
+               || (phType ? opts.placeholderGeom[phType] : undefined);
         x = g?.x ?? 0;
         y = g?.y ?? 0;
         cx = g?.cx ?? 1000000;
         cy = g?.cy ?? 500000;
+        // Use placeholder default font size when runs didn't specify one
+        if (g?.fontSize && fontSize === 18) {
+          fontSize = g.fontSize;
+        }
       } else {
         x = 0; y = 0; cx = 1000000; cy = 500000;
       }
