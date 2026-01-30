@@ -29,7 +29,7 @@ export function renderTextElement(el: TextElement): string {
     font-family: ${el.font?.name || "Arial"};
     font-size: ${nf(Number(el.font?.size), 12)}pt;
     color: ${el.font?.color || "#000"};
-    overflow: hidden;
+    overflow: visible;
     white-space: pre-wrap;
   ">${inner}</div>`;
 }
