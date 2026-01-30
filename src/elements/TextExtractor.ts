@@ -53,7 +53,7 @@ export class TextExtractor {
       let color: string | undefined = undefined;
       let horizontalAlign: "left" | "center" | "right" | "justify" | undefined = undefined;
 
-      type ParaItem = { kind: "p" | "ul" | "ol"; text: string; html: string; lvl: number; listStyle?: string };
+      type ParaItem = { kind: "p" | "ul" | "ol"; text: string; html: string; lvl: number; listStyle?: string; lineHeightPt?: number; spaceBeforePt?: number; spaceAfterPt?: number };
       const paraItems: ParaItem[] = [];
 
       // Extract default list styles per level from lstStyle (if present)
@@ -158,7 +158,26 @@ export class TextExtractor {
           listStyle = "disc";
         }
 
-        paraItems.push({ kind, text: paraText, html: paraHtml, lvl: isNaN(lvl) ? 0 : lvl, listStyle });
+        // Extract paragraph spacing
+        let lineHeightPt: number | undefined = undefined;
+        const lnSpc = pPr?.querySelector("*|lnSpc");
+        if (lnSpc) {
+          const spcPtsEl = lnSpc.querySelector("*|spcPts");
+          const spcPctEl = lnSpc.querySelector("*|spcPct");
+          if (spcPtsEl) {
+            const val = spcPtsEl.getAttribute("val");
+            if (val) lineHeightPt = parseInt(val, 10) / 100;
+          } else if (spcPctEl) {
+            const val = spcPctEl.getAttribute("val");
+            if (val) lineHeightPt = (parseInt(val, 10) / 100000) * fontSize;
+          }
+        }
+        const spcBefVal = pPr?.querySelector("*|spcBef > *|spcPts")?.getAttribute("val");
+        const spaceBeforePt = spcBefVal ? parseInt(spcBefVal, 10) / 100 : undefined;
+        const spcAftVal = pPr?.querySelector("*|spcAft > *|spcPts")?.getAttribute("val");
+        const spaceAfterPt = spcAftVal ? parseInt(spcAftVal, 10) / 100 : undefined;
+
+        paraItems.push({ kind, text: paraText, html: paraHtml, lvl: isNaN(lvl) ? 0 : lvl, listStyle, lineHeightPt, spaceBeforePt, spaceAfterPt });
       }
 
       // Fallbacks for color if still undefined
@@ -229,13 +248,18 @@ export class TextExtractor {
         const parts: string[] = [];
         let open: { kind: "ul" | "ol"; listStyle?: string } | null = null;
         for (const it of paraItems) {
+          const spacingCss = [
+            it.lineHeightPt ? `line-height:${it.lineHeightPt}pt` : "",
+            it.spaceBeforePt ? `margin-top:${it.spaceBeforePt}pt` : "",
+            it.spaceAfterPt ? `margin-bottom:${it.spaceAfterPt}pt` : "",
+          ].filter(Boolean).join(";");
           if (it.kind === "p") {
             if (open) {
               parts.push(open.kind === "ul" ? "</ul>" : "</ol>");
               open = null;
             }
             if (it.text.trim()) {
-              parts.push(`<div style="margin-left:${it.lvl * 24}px">${it.html}</div>`);
+              parts.push(`<div style="margin-left:${it.lvl * 24}px${spacingCss ? `;${spacingCss}` : ""}">${it.html}</div>`);
             }
             continue;
           }
@@ -247,7 +271,7 @@ export class TextExtractor {
             parts.push(it.kind === "ul" ? `<ul${style}>` : `<ol${style}>`);
             open = { kind: it.kind, listStyle: it.listStyle };
           }
-          parts.push(`<li style="margin-left:${it.lvl * 24}px">${it.html}</li>`);
+          parts.push(`<li style="margin-left:${it.lvl * 24}px${spacingCss ? `;${spacingCss}` : ""}">${it.html}</li>`);
         }
         if (open) parts.push(open.kind === "ul" ? "</ul>" : "</ol>");
         richHtml = parts.join("");
