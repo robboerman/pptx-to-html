@@ -53,7 +53,7 @@ export class TextExtractor {
       let color: string | undefined = undefined;
       let horizontalAlign: "left" | "center" | "right" | "justify" | undefined = undefined;
 
-      type ParaItem = { kind: "p" | "ul" | "ol"; text: string; lvl: number; listStyle?: string };
+      type ParaItem = { kind: "p" | "ul" | "ol"; text: string; html: string; lvl: number; listStyle?: string };
       const paraItems: ParaItem[] = [];
 
       // Extract default list styles per level from lstStyle (if present)
@@ -90,6 +90,7 @@ export class TextExtractor {
 
         const runs = p.getElementsByTagNameNS("*", "r");
         let paraText = getParagraphText(p);
+        const paraHtml = getParagraphHtml(p, themeColors);
         if (paraText) paraText.split(/\n+/).forEach((t) => { if (t) textRuns.push(t); });
 
         for (const r of Array.from(runs)) {
@@ -157,7 +158,7 @@ export class TextExtractor {
           listStyle = "disc";
         }
 
-        paraItems.push({ kind, text: paraText, lvl: isNaN(lvl) ? 0 : lvl, listStyle });
+        paraItems.push({ kind, text: paraText, html: paraHtml, lvl: isNaN(lvl) ? 0 : lvl, listStyle });
       }
 
       // Fallbacks for color if still undefined
@@ -222,9 +223,9 @@ export class TextExtractor {
         x = 0; y = 0; cx = 1000000; cy = 500000;
       }
 
-      // Build rich HTML for bullets/numbering if present
+      // Build rich HTML with per-run styling and bullets/numbering
       let richHtml: string | undefined = undefined;
-      if (paraItems.some((it) => it.kind !== "p")) {
+      {
         const parts: string[] = [];
         let open: { kind: "ul" | "ol"; listStyle?: string } | null = null;
         for (const it of paraItems) {
@@ -234,7 +235,7 @@ export class TextExtractor {
               open = null;
             }
             if (it.text.trim()) {
-              parts.push(`<div style="margin-left:${it.lvl * 24}px">${escapeHtml(it.text).replace(/\n/g, "<br>")}</div>`);
+              parts.push(`<div style="margin-left:${it.lvl * 24}px">${it.html}</div>`);
             }
             continue;
           }
@@ -246,7 +247,7 @@ export class TextExtractor {
             parts.push(it.kind === "ul" ? `<ul${style}>` : `<ol${style}>`);
             open = { kind: it.kind, listStyle: it.listStyle };
           }
-          parts.push(`<li style="margin-left:${it.lvl * 24}px">${escapeHtml(it.text).replace(/\n/g, "<br>")}</li>`);
+          parts.push(`<li style="margin-left:${it.lvl * 24}px">${it.html}</li>`);
         }
         if (open) parts.push(open.kind === "ul" ? "</ul>" : "</ol>");
         richHtml = parts.join("");
@@ -300,6 +301,62 @@ function getParagraphText(p: Element): string {
       }
     } else if (ln === "tab") {
       out += "\t";
+    }
+  }
+  return out;
+}
+
+// Extract rich HTML from a paragraph, wrapping each run in a <span> with its own styling
+function getParagraphHtml(p: Element, themeColors: Record<string, string>): string {
+  let out = "";
+  for (const child of Array.from(p.childNodes) as any[]) {
+    if (!(child instanceof Element)) continue;
+    const ln = child.localName;
+    if (ln === "r") {
+      const t = child.getElementsByTagNameNS("*", "t")[0]?.textContent ?? "";
+      if (!t) continue;
+      const rPr = child.getElementsByTagNameNS("*", "rPr")[0] ?? null;
+      const styles: string[] = [];
+      if (rPr) {
+        const latin = rPr.getElementsByTagNameNS("*", "latin")[0];
+        const typeface = latin?.getAttribute("typeface");
+        if (typeface) styles.push(`font-family:${typeface}`);
+
+        const sz = rPr.getAttribute("sz");
+        if (sz) {
+          const n = parseInt(sz, 10);
+          if (Number.isFinite(n)) styles.push(`font-size:${n / 100}pt`);
+        }
+
+        const solidFill = rPr.querySelector("*|solidFill");
+        const color = XmlHelper.getColorFromElement(solidFill || null, themeColors);
+        if (color) styles.push(`color:${color}`);
+
+        if (rPr.getAttribute("b") === "1") styles.push("font-weight:bold");
+        if (rPr.getAttribute("i") === "1") styles.push("font-style:italic");
+
+        const u = rPr.getAttribute("u");
+        if (u && u !== "none") styles.push("text-decoration:underline");
+      }
+      const escaped = escapeHtml(t);
+      out += styles.length > 0
+        ? `<span style="${styles.join(";")}">${escaped}</span>`
+        : escaped;
+    } else if (ln === "br") {
+      out += "<br>";
+    } else if (ln === "fld") {
+      const fldRuns = child.getElementsByTagNameNS("*", "r");
+      if (fldRuns.length) {
+        for (const r of Array.from(fldRuns)) {
+          const t = r.getElementsByTagNameNS("*", "t")[0]?.textContent ?? "";
+          out += escapeHtml(t);
+        }
+      } else {
+        const t = child.getElementsByTagNameNS("*", "t")[0]?.textContent;
+        if (t) out += escapeHtml(t);
+      }
+    } else if (ln === "tab") {
+      out += "&emsp;";
     }
   }
   return out;

@@ -36,6 +36,18 @@ export class ShapeExtractor {
       const prstGeom = shape.getElementsByTagNameNS("*", "prstGeom")[0];
       const shapeType = prstGeom?.getAttribute("prst") ?? "rect";
 
+      // Extract corner radius adjustment for roundRect
+      let cornerRadiusPct: number | undefined = undefined;
+      if (shapeType === "roundRect" && prstGeom) {
+        const avLst = prstGeom.getElementsByTagNameNS("*", "avLst")[0];
+        const gd = avLst?.getElementsByTagNameNS("*", "gd")[0];
+        if (gd?.getAttribute("name") === "adj") {
+          const fmla = gd.getAttribute("fmla") ?? "";
+          const match = fmla.match(/val\s+(\d+)/);
+          if (match) cornerRadiusPct = parseInt(match[1], 10);
+        }
+      }
+
       const spPr = shape.getElementsByTagNameNS("*", "spPr")[0];
 
       let fillColor = "transparent";
@@ -103,6 +115,7 @@ export class ShapeExtractor {
         rotationDeg,
         headEnd,
         tailEnd,
+        cornerRadiusPct,
       };
 
       elements.push(element);

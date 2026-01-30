@@ -16,6 +16,9 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
 
     const rotation = el.rotationDeg && !isNaN(el.rotationDeg) ? el.rotationDeg : 0;
     const rotationStyle = rotation ? `transform: rotate(${rotation}deg); transform-origin: center;` : "";
+    const borderWidth = el.strokeWidth && Number.isFinite(el.strokeWidth) && el.strokeWidth > 0
+      ? el.strokeWidth
+      : 1;
 
     const style = `
     position: absolute;
@@ -30,23 +33,34 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
     if (el.shapeType === "rect") {
         return `<div style="${style}
       background-color: ${el.fillColor};
-      border: 1px solid ${el.borderColor ?? "transparent"};
+      border: ${borderWidth}px solid ${el.borderColor ?? "transparent"};
       box-sizing: border-box;"></div>`;
     }
 
     if (el.shapeType === "ellipse") {
         return `<div style="${style}
       background-color: ${el.fillColor};
-      border: 1px solid ${el.borderColor ?? "transparent"};
+      border: ${borderWidth}px solid ${el.borderColor ?? "transparent"};
       border-radius: 50%;
       box-sizing: border-box;"></div>`;
     }
 
     if (el.shapeType === "roundRect") {
+        // Compute corner radius from the adjustment value if available,
+        // otherwise use a sensible default based on the smaller dimension.
+        const adjVal = el.cornerRadiusPct;
+        let radius: number;
+        if (adjVal !== undefined && adjVal >= 0) {
+            // adjVal is a percentage (0–50000 maps to 0–50%) of the shorter side
+            const shorter = Math.min(width, height);
+            radius = (adjVal / 100000) * shorter;
+        } else {
+            radius = Math.min(16, Math.min(width, height) * 0.1);
+        }
         return `<div style="${style}
       background-color: ${el.fillColor};
-      border: 1px solid ${el.borderColor ?? "transparent"};
-      border-radius: 16px;
+      border: ${borderWidth}px solid ${el.borderColor ?? "transparent"};
+      border-radius: ${radius}px;
       box-sizing: border-box;"></div>`;
     }
 

@@ -99,6 +99,9 @@ export interface ShapeElement {
 
   /** Arrowhead at the end of the line */
   tailEnd?: { type?: string; w?: string; len?: string };
+
+  /** Corner radius percentage for roundRect (OOXML adj value, 0–50000) */
+  cornerRadiusPct?: number;
 }
 
 export interface BackgroundElement {
