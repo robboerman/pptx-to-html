@@ -5,7 +5,7 @@ import { ImageExtractor } from "../elements/ImageExtractor";
 import { ShapeExtractor } from "../elements/ShapeExtractor";
 import { TableExtractor } from "../elements/TableExtractor";
 import { ChartExtractor } from "../elements/ChartExtractor";
-import { SlideElement } from "../models/SlideElement";
+import { SlideElement, BackgroundElement, Fill } from "../models/SlideElement";
 
 /**
  * Responsible for extracting all slides from the .pptx file as lists of SlideElement.
@@ -192,17 +192,18 @@ export class SlideExtractor {
     baseDir: string,
     zip: JSZip,
     themeColors: Record<string, string>
-  ): Promise<SlideElement | null> {
+  ): Promise<BackgroundElement | null> {
     if (!doc) return null;
     const bg = doc.getElementsByTagNameNS("*", "bg")[0];
     if (!bg) return null;
 
-    // Try solid fill
     const bgPr = bg.getElementsByTagNameNS("*", "bgPr")[0] || null;
+
+    // Try solid fill
     const solidFill = bgPr?.getElementsByTagNameNS("*", "solidFill")[0] || null;
     const color = XmlHelper.getColorFromElement(solidFill, themeColors);
     if (color) {
-      return { type: "background", fillColor: color } as SlideElement;
+      return { type: "background", fill: { type: "solid", color } };
     }
 
     // Try scheme color via bgRef
@@ -210,7 +211,7 @@ export class SlideExtractor {
     const schemeClr = bgRef?.getElementsByTagNameNS("*", "schemeClr")[0] || null;
     const schemeVal = schemeClr?.getAttribute("val") || undefined;
     if (schemeVal && themeColors[schemeVal]) {
-      return { type: "background", fillColor: themeColors[schemeVal] } as SlideElement;
+      return { type: "background", fill: { type: "solid", color: themeColors[schemeVal] } };
     }
 
     // Try image fill
@@ -227,7 +228,7 @@ export class SlideExtractor {
           const binary = await file.async("base64");
           const ext = fullPath.split(".").pop()?.toLowerCase() || "png";
           const dataUri = `data:image/${ext};base64,${binary}`;
-          return { type: "background", imageSrc: dataUri } as SlideElement;
+          return { type: "background", fill: { type: "image", src: dataUri } };
         }
       }
     }

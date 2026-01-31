@@ -14,108 +14,108 @@ export interface Size {
   height: number;
 }
 
+// ── Fill Types ──────────────────────────────────────────────────────────────
+
+export interface SolidFill {
+  type: "solid";
+  color: string; // #RRGGBB
+}
+
+export interface GradientStop {
+  offset: number; // 0–100 percentage
+  color: string;  // #RRGGBB
+}
+
+export interface GradientFill {
+  type: "gradient";
+  gradientType: "linear" | "radial";
+  stops: GradientStop[];
+  /** Angle in CSS degrees (0 = bottom-to-top) for linear gradients */
+  angle?: number;
+}
+
+export interface ImageFill {
+  type: "image";
+  src: string; // data URI or URL
+}
+
+export interface NoFill {
+  type: "none";
+}
+
+/** Discriminated union for all fill types */
+export type Fill = SolidFill | GradientFill | ImageFill | NoFill;
+
+// ── Stroke Types ────────────────────────────────────────────────────────────
+
+export interface ArrowHead {
+  type?: string;
+  w?: string;
+  len?: string;
+}
+
+export interface StrokeStyle {
+  color: string;  // #RRGGBB
+  width: number;  // px
+  dashStyle?: string; // OOXML preset dash name (dash, dot, dashDot, etc.)
+  headEnd?: ArrowHead;
+  tailEnd?: ArrowHead;
+}
+
+// ── Text Content (for text inside shapes) ───────────────────────────────────
+
+export interface ShapeTextContent {
+  html: string;
+  font: { name: string; size: number; color: string };
+  align?: { horizontal?: "left" | "center" | "right" | "justify"; vertical?: "top" | "middle" | "bottom" };
+  padding?: { left: number; top: number; right: number; bottom: number };
+}
+
+// ── Element Types ───────────────────────────────────────────────────────────
+
 export interface TextElement {
-  /** Element type identifier */
   type: "text";
-
-  /** Text content */
   content: string;
-
-  /** Element position */
   position: Position;
-
-  /** Element size */
   size: Size;
-
-  /** Text font configuration */
   font: {
-    /** Font family name */
     name: string;
-
-    /** Font size in points */
     size: number;
-
-    /** Font color as hexadecimal string (#RRGGBB) */
-    color: string;
+    color: string; // #RRGGBB
   };
-
-  /** Horizontal and vertical alignment inside its bounding box */
   align?: {
     horizontal?: "left" | "center" | "right" | "justify";
     vertical?: "top" | "middle" | "bottom";
   };
-
-  /** Internal padding in px from bodyPr insets */
   padding?: { left: number; top: number; right: number; bottom: number };
-
-  /** Optional rich HTML content (e.g., bullets/numbering) */
   html?: string;
 }
 
 export interface ImageElement {
-  /** Element type identifier */
   type: "image";
-
-  /** Relationship ID pointing to the image in /ppt/media */
   relId: string;
-
-  /** Data URI or image source path */
   src: string;
-
-  /** Image position */
   position: Position;
-
-  /** Image size */
   size: Size;
 }
 
 export interface ShapeElement {
-  /** Element type identifier */
   type: "shape";
-
-  /** Shape type name (e.g. rectangle, ellipse) */
   shapeType: string;
-
-  /** Shape position */
   position: Position;
-
-  /** Shape size */
   size: Size;
-
-  /** Fill color as hexadecimal string (#RRGGBB) */
-  fillColor: string;
-
-  /** Border color as hexadecimal string (#RRGGBB) */
-  borderColor?: string;
-
-  /** Stroke width in px for lines/connectors */
-  strokeWidth?: number;
-
-  /** Rotation in degrees applied around center */
+  fill: Fill;
+  stroke?: StrokeStyle;
   rotationDeg?: number;
-
-  /** Arrowhead at the start of the line */
-  headEnd?: { type?: string; w?: string; len?: string };
-
-  /** Arrowhead at the end of the line */
-  tailEnd?: { type?: string; w?: string; len?: string };
-
-  /** Corner radius percentage for roundRect (OOXML adj value, 0–50000) */
   cornerRadiusPct?: number;
+  textContent?: ShapeTextContent;
 }
 
 export interface BackgroundElement {
-  /** Element type identifier */
   type: "background";
-
-  /** Solid background color (hex) */
-  fillColor?: string;
-
-  /** Background image as data URI */
-  imageSrc?: string;
+  fill: Fill;
 }
 
-/** Union type of any possible slide element */
 export interface TableCell {
   text: string;
   font?: { name?: string; size?: number; color?: string };
@@ -138,9 +138,9 @@ export interface TableRow {
 
 export interface TableElement {
   type: "table";
-  position: Position; // EMUs
-  size: Size; // EMUs
-  columns: number[]; // column widths in EMUs
+  position: Position;
+  size: Size;
+  columns: number[];
   rows: TableRow[];
   tableStyle?: { firstRow?: boolean; firstCol?: boolean; lastRow?: boolean; lastCol?: boolean; bandRow?: boolean; bandCol?: boolean };
   tableBorders?: {
@@ -151,9 +151,7 @@ export interface TableElement {
     insideH?: { color?: string; width?: number; style?: "solid" | "dashed" | "dotted" };
     insideV?: { color?: string; width?: number; style?: "solid" | "dashed" | "dotted" };
   };
-  /** Optional table style id and resolved fills/font colors from theme */
   tableStyleId?: string;
-  /** Optional table-level background fill color (from tblPr solidFill) */
   tableFillColor?: string;
   style?: {
     fills?: Partial<Record<
@@ -167,6 +165,31 @@ export interface TableElement {
   };
 }
 
+export type ChartType = "bar" | "column" | "line" | "pie" | "area" | "scatter";
+
+export interface ChartSeries {
+  name?: string;
+  values?: number[];
+  points?: { x: number; y: number }[];
+  color?: string;
+  valueFormat?: string;
+}
+
+export interface ChartElement {
+  type: "chart";
+  chartType: ChartType;
+  position: Position;
+  size: Size;
+  categories: (string | number)[];
+  series: ChartSeries[];
+  palette?: string[];
+  title?: string;
+  showLegend?: boolean;
+  showDataLabels?: boolean;
+  stackedMode?: "none" | "stacked" | "percent";
+  valueFormat?: string;
+}
+
 export type SlideElement =
   | TextElement
   | ImageElement
@@ -174,34 +197,3 @@ export type SlideElement =
   | BackgroundElement
   | TableElement
   | ChartElement;
-
-export type ChartType = "bar" | "column" | "line" | "pie" | "area" | "scatter";
-
-export interface ChartSeries {
-  name?: string;
-  values?: number[];
-  points?: { x: number; y: number }[]; // for scatter
-  color?: string;
-  valueFormat?: string; // optional Excel/OOXML numFmt formatCode
-}
-
-export interface ChartElement {
-  type: "chart";
-  chartType: ChartType;
-  position: Position; // EMUs
-  size: Size; // EMUs
-  categories: (string | number)[];
-  series: ChartSeries[];
-  /** Optional palette (e.g., theme accents) used for series when color missing */
-  palette?: string[];
-  /** Optional chart title */
-  title?: string;
-  /** Legend visibility (if present in chart) */
-  showLegend?: boolean;
-  /** Data labels visibility */
-  showDataLabels?: boolean;
-  /** For bar/column: stacked modes */
-  stackedMode?: "none" | "stacked" | "percent";
-  /** Default number format for labels/ticks (OOXML numFmt) */
-  valueFormat?: string;
-}

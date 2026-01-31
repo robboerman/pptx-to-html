@@ -1,9 +1,30 @@
-import { SlideElement } from "../models/SlideElement";
+import { SlideElement, BackgroundElement, Fill } from "../models/SlideElement";
 import { renderTextElement } from "./renderTextElement";
 import { renderImageElement } from "./renderImageElement";
 import { renderShapeElement } from "./renderShapeElement";
 import { renderTableElement } from "./renderTableElement";
 import { renderChartElement } from "./renderChartElement";
+
+function backgroundFillToCss(fill: Fill): string {
+  switch (fill.type) {
+    case "solid":
+      return `background-color: ${fill.color};`;
+    case "gradient": {
+      if (fill.stops.length === 0) return "background-color: transparent;";
+      if (fill.stops.length === 1) return `background-color: ${fill.stops[0].color};`;
+      const stops = fill.stops.map(s => `${s.color} ${s.offset}%`).join(", ");
+      if (fill.gradientType === "radial") {
+        return `background: radial-gradient(ellipse at center, ${stops});`;
+      }
+      const angle = fill.angle ?? 180;
+      return `background: linear-gradient(${angle}deg, ${stops});`;
+    }
+    case "image":
+      return `background-image: url('${fill.src}'); background-size: cover; background-position: center; background-repeat: no-repeat;`;
+    case "none":
+      return "background-color: transparent;";
+  }
+}
 
 /**
  * Converts a list of SlideElements into an HTML string with absolute positioning.
@@ -31,10 +52,8 @@ export class HtmlRenderer {
     const htmlParts = elements.map((el) => {
       switch (el.type) {
         case "background": {
-          const hasImg = Boolean((el as any).imageSrc);
-          const styleBg = hasImg
-            ? `background-image: url('${(el as any).imageSrc}'); background-size: cover; background-position: center; background-repeat: no-repeat;`
-            : `background-color: ${(el as any).fillColor || "transparent"};`;
+          const bgEl = el as BackgroundElement;
+          const styleBg = backgroundFillToCss(bgEl.fill);
           return `<div style="position:absolute; left:0; top:0; width:${baseW}px; height:${baseH}px; ${styleBg}"></div>`;
         }
         case "text": return renderTextElement(el);

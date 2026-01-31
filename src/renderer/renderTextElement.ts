@@ -26,7 +26,7 @@ export function renderTextElement(el: TextElement): string {
     justify-content: ${justify};
     text-align: ${textAlign};
     padding: ${pad.top}px ${pad.right}px ${pad.bottom}px ${pad.left}px;
-    font-family: ${el.font?.name || "Arial"};
+    font-family: ${el.font?.name || "Arial"}, sans-serif;
     font-size: ${nf(Number(el.font?.size), 12)}pt;
     color: ${el.font?.color || "#000"};
     overflow: visible;

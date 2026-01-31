@@ -1,11 +1,50 @@
-import { ShapeElement } from "../models/SlideElement";
+import { ShapeElement, Fill, ArrowHead } from "../models/SlideElement";
 import { getSvgPathForShape } from "./shapePathMap";
+
+/** Extract a CSS-usable color string from a Fill, or fallback */
+function fillToCssColor(fill: Fill, fallback = "transparent"): string {
+  switch (fill.type) {
+    case "solid": return fill.color;
+    case "gradient": return fill.stops.length > 0 ? fill.stops[0].color : fallback;
+    case "none": return "transparent";
+    default: return fallback;
+  }
+}
+
+/** Generate CSS background property for a fill */
+function fillToCssBackground(fill: Fill): string {
+  switch (fill.type) {
+    case "solid":
+      return `background-color: ${fill.color};`;
+    case "gradient": {
+      if (fill.stops.length === 0) return "background-color: transparent;";
+      if (fill.stops.length === 1) return `background-color: ${fill.stops[0].color};`;
+      const stops = fill.stops.map(s => `${s.color} ${s.offset}%`).join(", ");
+      if (fill.gradientType === "radial") {
+        return `background: radial-gradient(ellipse at center, ${stops});`;
+      }
+      const angle = fill.angle ?? 180;
+      return `background: linear-gradient(${angle}deg, ${stops});`;
+    }
+    case "image":
+      return `background-image: url('${fill.src}'); background-size: cover; background-position: center;`;
+    case "none":
+      return "background-color: transparent;";
+  }
+}
+
+/** Resolve stroke color: prefer explicit, fallback to fill color, then default */
+function resolveStrokeColor(el: ShapeElement): string {
+  const strokeColor = el.stroke?.color;
+  if (strokeColor && strokeColor !== "transparent") return strokeColor;
+  const fc = fillToCssColor(el.fill);
+  if (fc !== "transparent") return fc;
+  return "#000";
+}
 
 /**
  * Renders a shape element as an absolutely positioned HTML or SVG element.
  * Supports all recognized PPTX shape types using SVG when necessary.
- * @param el Shape element to render.
- * @returns HTML string representing the shape.
  */
 export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: boolean } = {}): string {
     const nf = (n: number, fb = 0) => (Number.isFinite(n) ? n : fb);
@@ -16,9 +55,10 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
 
     const rotation = el.rotationDeg && !isNaN(el.rotationDeg) ? el.rotationDeg : 0;
     const rotationStyle = rotation ? `transform: rotate(${rotation}deg); transform-origin: center;` : "";
-    const borderWidth = el.strokeWidth && Number.isFinite(el.strokeWidth) && el.strokeWidth > 0
-      ? el.strokeWidth
+    const strokeWidth = el.stroke?.width && Number.isFinite(el.stroke.width) && el.stroke.width > 0
+      ? el.stroke.width
       : 1;
+    const strokeColor = el.stroke?.color ?? "transparent";
 
     const style = `
     position: absolute;
@@ -29,27 +69,28 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
     ${rotationStyle}
   `;
 
+    const bgCss = fillToCssBackground(el.fill);
+
     // Basic HTML shapes
     if (el.shapeType === "rect") {
         return `<div style="${style}
-      background-color: ${el.fillColor};
-      border: ${borderWidth}px solid ${el.borderColor ?? "transparent"};
+      ${bgCss}
+      border: ${strokeWidth}px solid ${strokeColor};
       box-sizing: border-box;"></div>`;
     }
 
     if (el.shapeType === "ellipse") {
         return `<div style="${style}
-      background-color: ${el.fillColor};
-      border: ${borderWidth}px solid ${el.borderColor ?? "transparent"};
+      ${bgCss}
+      border: ${strokeWidth}px solid ${strokeColor};
       border-radius: 50%;
       box-sizing: border-box;"></div>`;
     }
 
     if (el.shapeType === "line") {
-        const sw = el.strokeWidth && Number.isFinite(el.strokeWidth) && el.strokeWidth > 0
-          ? el.strokeWidth : 1;
-        const strokeColor = el.borderColor && el.borderColor !== "transparent"
-          ? el.borderColor : (el.fillColor !== "transparent" ? el.fillColor : "#000");
+        const sw = el.stroke?.width && Number.isFinite(el.stroke.width) && el.stroke.width > 0
+          ? el.stroke.width : 1;
+        const lineColor = resolveStrokeColor(el);
         const isVertical = width < 1;
         const isHorizontal = height < 1;
 
@@ -60,7 +101,7 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
               top: ${y}px;
               width: ${sw}px;
               height: ${Math.max(height, sw)}px;
-              background-color: ${strokeColor};
+              background-color: ${lineColor};
               ${rotationStyle}
             "></div>`;
         }
@@ -71,7 +112,7 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
               top: ${y - sw / 2}px;
               width: ${Math.max(width, sw)}px;
               height: ${sw}px;
-              background-color: ${strokeColor};
+              background-color: ${lineColor};
               ${rotationStyle}
             "></div>`;
         }
@@ -79,38 +120,37 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
     }
 
     if (el.shapeType === "roundRect") {
-        // Compute corner radius from the adjustment value if available,
-        // otherwise use a sensible default based on the smaller dimension.
         const adjVal = el.cornerRadiusPct;
         let radius: number;
         if (adjVal !== undefined && adjVal >= 0) {
-            // adjVal is a percentage (0–50000 maps to 0–50%) of the shorter side
             const shorter = Math.min(width, height);
             radius = (adjVal / 100000) * shorter;
         } else {
             radius = Math.min(16, Math.min(width, height) * 0.1);
         }
         return `<div style="${style}
-      background-color: ${el.fillColor};
-      border: ${borderWidth}px solid ${el.borderColor ?? "transparent"};
+      ${bgCss}
+      border: ${strokeWidth}px solid ${strokeColor};
       border-radius: ${radius}px;
       box-sizing: border-box;"></div>`;
     }
 
     // SVG-based shapes using prefixed definition
     const raw = getSvgPathForShape(el.shapeType);
+    const svgFill = fillToCssColor(el.fill);
+    const svgStroke = resolveStrokeColor(el);
     return shapeSvg(
       x,
       y,
       width,
       height,
-      el.fillColor,
-      el.borderColor,
+      svgFill,
+      svgStroke,
       raw,
-      el.strokeWidth && Number.isFinite(el.strokeWidth) ? el.strokeWidth : undefined,
+      el.stroke?.width && Number.isFinite(el.stroke.width) ? el.stroke.width : undefined,
       rotation,
-      el.headEnd,
-      el.tailEnd,
+      el.stroke?.headEnd,
+      el.stroke?.tailEnd,
       options.scaleStrokes === true
     );
 }
@@ -125,11 +165,11 @@ function shapeSvg(
   raw: string,
   strokeWidthPx?: number,
   rotationDeg?: number,
-  headEnd?: { type?: string; w?: string; len?: string },
-  tailEnd?: { type?: string; w?: string; len?: string },
+  headEnd?: ArrowHead,
+  tailEnd?: ArrowHead,
   scaleStrokes?: boolean
 ): string {
-  const strokeColorOpt = resolveStrokeColor(stroke, fill);
+  const strokeColorOpt = stroke && stroke !== "transparent" ? stroke : undefined;
   const [typeRaw, ...rest] = raw.trim().split(/\s+/);
   const type = typeRaw.toUpperCase().replace("_ARROW", "");
   const isArrow = typeRaw.endsWith("_ARROW");
@@ -174,13 +214,11 @@ function shapeSvg(
         return "";
       }
 
-      // "x1,y1 x2,y2 x3,y3 ..."
       const pointPairs: string[] = [];
       for (let i = 0; i < coords.length; i += 2) {
         pointPairs.push(`${coords[i]},${coords[i + 1]}`);
       }
 
-      // Dimensiones mínimas para que el trazo no se pierda
       const effectiveWidth = width > 0 ? width : Math.max(sw * 2, 2);
       const effectiveHeight = height > 0 ? height : Math.max(sw * 2, 2);
 
@@ -188,7 +226,6 @@ function shapeSvg(
       const markerStartAttr = defs.startId ? `marker-start=\"url(#${defs.startId})\"` : "";
       const markerEndAttr = defs.endId ? `marker-end=\"url(#${defs.endId})\"` : "";
 
-      // Escalar puntos a píxeles directamente para evitar distorsión
       const scaledPairs: string[] = [];
       for (let i = 0; i < coords.length; i += 2) {
         const px = (coords[i] / 100) * effectiveWidth;
@@ -227,8 +264,8 @@ function shapeSvg(
 }
 
 function buildMarkerDefs(
-  headEnd: { type?: string; w?: string; len?: string } | undefined,
-  tailEnd: { type?: string; w?: string; len?: string } | undefined,
+  headEnd: ArrowHead | undefined,
+  tailEnd: ArrowHead | undefined,
   color: string
 ): { defs: string; startId?: string; endId?: string } {
   const parts: string[] = [];
@@ -247,10 +284,10 @@ function buildMarkerDefs(
   return { defs: parts.length ? `<defs>${parts.join("\n")}</defs>` : "", startId, endId };
 }
 
-function markerDef(id: string, spec: { type?: string; w?: string; len?: string }, color: string): string {
+function markerDef(id: string, spec: ArrowHead, color: string): string {
   const sizeFactor = mapLen(spec.len);
-  const base = 4 * sizeFactor; // base marker box size
-  const refX = base; // tip at end
+  const base = 4 * sizeFactor;
+  const refX = base;
   const refY = base / 2;
 
   switch ((spec.type || "triangle").toLowerCase()) {
@@ -292,12 +329,4 @@ function mapLen(len?: string): number {
     default:
       return 2;
   }
-}
-
-function resolveStrokeColor(stroke?: string, fill?: string): string | undefined {
-  // Prefer explicit border color if present and not transparent
-  if (stroke && stroke !== "transparent") return stroke;
-  // Fallback to fill if it's a solid color
-  if (fill && fill !== "transparent") return fill;
-  return undefined;
 }

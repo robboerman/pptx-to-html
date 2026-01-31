@@ -1,4 +1,4 @@
-import { ShapeElement } from "../models/SlideElement";
+import { ShapeElement, Fill, StrokeStyle, ArrowHead } from "../models/SlideElement";
 import { XmlHelper } from "../core/XmlHelper";
 
 /**
@@ -50,71 +50,17 @@ export class ShapeExtractor {
 
       const spPr = shape.getElementsByTagNameNS("*", "spPr")[0];
 
-      let fillColor = "transparent";
-      let borderColor = "transparent";
-      let strokeWidth: number | undefined = undefined;
-      let headEnd: { type?: string; w?: string; len?: string } | undefined = undefined;
-      let tailEnd: { type?: string; w?: string; len?: string } | undefined = undefined;
-
-      if (spPr) {
-        const solidFill = spPr.getElementsByTagNameNS("*", "solidFill")[0] ?? null;
-        fillColor = XmlHelper.getColorFromElement(solidFill, themeColors) ?? "transparent";
-
-        const ln = spPr.getElementsByTagNameNS("*", "ln")[0];
-        const borderFill = ln?.getElementsByTagNameNS("*", "solidFill")[0] ?? null;
-        borderColor = XmlHelper.getColorFromElement(borderFill, themeColors) ?? "transparent";
-
-        // Extract line width (w) in EMUs and convert to px if present
-        const wAttr = ln?.getAttribute("w");
-        if (wAttr) {
-          const w = Number(wAttr);
-          if (!isNaN(w)) {
-            strokeWidth = w / 9525; // EMUs to px (approx at 96dpi)
-          }
-        }
-
-        // Arrowheads: <a:headEnd> and <a:tailEnd> with attributes type, w, len
-        const headEndEl = ln?.getElementsByTagNameNS("*", "headEnd")[0] ?? null;
-        const tailEndEl = ln?.getElementsByTagNameNS("*", "tailEnd")[0] ?? null;
-
-        headEnd = headEndEl
-          ? {
-              type: headEndEl.getAttribute("type") || undefined,
-              w: headEndEl.getAttribute("w") || undefined,
-              len: headEndEl.getAttribute("len") || undefined,
-            }
-          : undefined;
-
-        tailEnd = tailEndEl
-          ? {
-              type: tailEndEl.getAttribute("type") || undefined,
-              w: tailEndEl.getAttribute("w") || undefined,
-              len: tailEndEl.getAttribute("len") || undefined,
-            }
-          : undefined;
-      }
-
-      if (fillColor === "transparent") {
-        const style = shape.getElementsByTagNameNS("*", "style")[0];
-        const fillRef = style?.getElementsByTagNameNS("*", "fillRef")[0];
-        const schemeClr = fillRef?.getElementsByTagNameNS("*", "schemeClr")[0];
-        const val = schemeClr?.getAttribute("val");
-        if (val && themeColors[val]) {
-          fillColor = themeColors[val];
-        }
-      }
+      const fill = this.extractFill(spPr, shape, themeColors);
+      const stroke = this.extractStroke(spPr, themeColors);
 
       const element: ShapeElement = {
         type: "shape",
         shapeType,
         position: { x, y },
         size: { width: cx, height: cy },
-        fillColor,
-        borderColor,
-        strokeWidth,
+        fill,
+        stroke,
         rotationDeg,
-        headEnd,
-        tailEnd,
         cornerRadiusPct,
       };
 
@@ -122,5 +68,89 @@ export class ShapeExtractor {
     }
 
     return elements;
+  }
+
+  /** Extract fill from shape properties, with theme/style fallback */
+  private static extractFill(
+    spPr: Element | undefined,
+    shape: Element,
+    themeColors: Record<string, string>,
+  ): Fill {
+    if (spPr) {
+      // Check for explicit noFill first
+      const noFill = spPr.getElementsByTagNameNS("*", "noFill")[0];
+      if (noFill) {
+        return { type: "none" };
+      }
+
+      // Try solid fill
+      const solidFill = spPr.getElementsByTagNameNS("*", "solidFill")[0] ?? null;
+      const color = XmlHelper.getColorFromElement(solidFill, themeColors);
+      if (color) {
+        return { type: "solid", color };
+      }
+    }
+
+    // Fallback to style/fillRef (theme color)
+    const style = shape.getElementsByTagNameNS("*", "style")[0];
+    const fillRef = style?.getElementsByTagNameNS("*", "fillRef")[0];
+    const schemeClr = fillRef?.getElementsByTagNameNS("*", "schemeClr")[0];
+    const val = schemeClr?.getAttribute("val");
+    if (val && themeColors[val]) {
+      return { type: "solid", color: themeColors[val] };
+    }
+
+    return { type: "none" };
+  }
+
+  /** Extract stroke/line properties */
+  private static extractStroke(
+    spPr: Element | undefined,
+    themeColors: Record<string, string>,
+  ): StrokeStyle | undefined {
+    if (!spPr) return undefined;
+
+    const ln = spPr.getElementsByTagNameNS("*", "ln")[0];
+    if (!ln) return undefined;
+
+    const borderFill = ln.getElementsByTagNameNS("*", "solidFill")[0] ?? null;
+    const color = XmlHelper.getColorFromElement(borderFill, themeColors) ?? "transparent";
+
+    // Line width (w) in EMUs → px
+    const wAttr = ln.getAttribute("w");
+    let width = 1;
+    if (wAttr) {
+      const w = Number(wAttr);
+      if (!isNaN(w)) {
+        width = w / 9525;
+      }
+    }
+
+    // Arrowheads
+    const headEndEl = ln.getElementsByTagNameNS("*", "headEnd")[0] ?? null;
+    const tailEndEl = ln.getElementsByTagNameNS("*", "tailEnd")[0] ?? null;
+
+    const headEnd: ArrowHead | undefined = headEndEl
+      ? {
+          type: headEndEl.getAttribute("type") || undefined,
+          w: headEndEl.getAttribute("w") || undefined,
+          len: headEndEl.getAttribute("len") || undefined,
+        }
+      : undefined;
+
+    const tailEnd: ArrowHead | undefined = tailEndEl
+      ? {
+          type: tailEndEl.getAttribute("type") || undefined,
+          w: tailEndEl.getAttribute("w") || undefined,
+          len: tailEndEl.getAttribute("len") || undefined,
+        }
+      : undefined;
+
+    // Only return stroke if there's meaningful content
+    if (color === "transparent" && !headEnd && !tailEnd && width <= 0) {
+      return undefined;
+    }
+
+    return { color, width, headEnd, tailEnd };
   }
 }

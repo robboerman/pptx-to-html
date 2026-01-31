@@ -350,7 +350,7 @@ function getParagraphHtml(p: Element, themeColors: Record<string, string>): stri
       if (rPr) {
         const latin = rPr.getElementsByTagNameNS("*", "latin")[0];
         const typeface = latin?.getAttribute("typeface");
-        if (typeface) styles.push(`font-family:${typeface}`);
+        if (typeface) styles.push(`font-family:${typeface}, sans-serif`);
 
         const sz = rPr.getAttribute("sz");
         if (sz) {
