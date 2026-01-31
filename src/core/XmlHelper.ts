@@ -7,6 +7,124 @@ function libWarn(msg: string) {
 
 type DomParserLike = { parseFromString(xml: string, mimeType: string): Document };
 
+/** Parse a "#RRGGBB" hex string into [r, g, b] (0-255) */
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.substring(0, 2), 16),
+    parseInt(h.substring(2, 4), 16),
+    parseInt(h.substring(4, 6), 16),
+  ];
+}
+
+/** Convert [r, g, b] (0-255) to "#RRGGBB" */
+function rgbToHex(r: number, g: number, b: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return `#${[clamp(r), clamp(g), clamp(b)].map(v => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** Convert [r, g, b] (0-255) to [h (0-360), s (0-1), l (0-1)] */
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const rn = r / 255, gn = g / 255, bn = b / 255;
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
+  else if (max === gn) h = ((bn - rn) / d + 2) / 6;
+  else h = ((rn - gn) / d + 4) / 6;
+  return [h * 360, s, l];
+}
+
+/** Convert [h (0-360), s (0-1), l (0-1)] to [r, g, b] (0-255) */
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  if (s === 0) {
+    const v = Math.round(l * 255);
+    return [v, v, v];
+  }
+  const hue2rgb = (p: number, q: number, t: number) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hn = h / 360;
+  return [
+    Math.round(hue2rgb(p, q, hn + 1 / 3) * 255),
+    Math.round(hue2rgb(p, q, hn) * 255),
+    Math.round(hue2rgb(p, q, hn - 1 / 3) * 255),
+  ];
+}
+
+/**
+ * Apply OOXML color modifiers (lumMod, lumOff, tint, shade, satMod, satOff)
+ * found as child elements of a color element (srgbClr, schemeClr, sysClr).
+ */
+function applyColorModifiers(hex: string, colorEl: Element): string {
+  const children = Array.from(colorEl.children);
+  if (children.length === 0) return hex;
+
+  let [r, g, b] = hexToRgb(hex);
+
+  // Collect modifier values (val is 0–100000, representing percentage * 1000)
+  let tint: number | undefined;
+  let shade: number | undefined;
+  let lumMod: number | undefined;
+  let lumOff: number | undefined;
+  let satMod: number | undefined;
+  let satOff: number | undefined;
+
+  for (const child of children) {
+    const tag = child.localName;
+    const val = Number(child.getAttribute("val") || "0");
+    if (!Number.isFinite(val)) continue;
+    switch (tag) {
+      case "tint": tint = val; break;
+      case "shade": shade = val; break;
+      case "lumMod": lumMod = val; break;
+      case "lumOff": lumOff = val; break;
+      case "satMod": satMod = val; break;
+      case "satOff": satOff = val; break;
+    }
+  }
+
+  // Apply tint (lighten towards white) — RGB space
+  if (tint !== undefined) {
+    const t = tint / 100000;
+    r = Math.round(r + (255 - r) * t);
+    g = Math.round(g + (255 - g) * t);
+    b = Math.round(b + (255 - b) * t);
+  }
+
+  // Apply shade (darken towards black) — RGB space
+  if (shade !== undefined) {
+    const s = shade / 100000;
+    r = Math.round(r * s);
+    g = Math.round(g * s);
+    b = Math.round(b * s);
+  }
+
+  // Apply HSL-based modifiers
+  if (lumMod !== undefined || lumOff !== undefined || satMod !== undefined || satOff !== undefined) {
+    let [h, s, l] = rgbToHsl(r, g, b);
+    if (lumMod !== undefined) l = l * (lumMod / 100000);
+    if (lumOff !== undefined) l = l + (lumOff / 100000);
+    if (satMod !== undefined) s = s * (satMod / 100000);
+    if (satOff !== undefined) s = s + (satOff / 100000);
+    l = Math.max(0, Math.min(1, l));
+    s = Math.max(0, Math.min(1, s));
+    [r, g, b] = hslToRgb(h, s, l);
+  }
+
+  return rgbToHex(r, g, b);
+}
+
 export class XmlHelper {
   private static domParserFactory: (() => DomParserLike) | null = null;
   /**
@@ -67,7 +185,8 @@ export class XmlHelper {
     const srgb = el.getElementsByTagNameNS("*", "srgbClr")[0];
     if (srgb) {
       const val = srgb.getAttribute("val");
-      return val ? `#${val}` : undefined;
+      if (!val) return undefined;
+      return applyColorModifiers(`#${val}`, srgb);
     }
 
     // 2. Try <schemeClr val="..."> resolved via themeColors (including aliases)
@@ -75,7 +194,6 @@ export class XmlHelper {
     if (scheme) {
       const val = scheme.getAttribute("val");
       if (val && themeColors) {
-        // Resolve alias like bg1, bg2, tx1, tx2 to known theme keys
         const aliasMap: Record<string, string> = {
           bg1: "lt1",
           bg2: "lt2",
@@ -83,7 +201,9 @@ export class XmlHelper {
           tx2: "dk2"
         };
         const resolvedKey = aliasMap[val] || val;
-        return themeColors[resolvedKey];
+        const baseColor = themeColors[resolvedKey];
+        if (!baseColor) return undefined;
+        return applyColorModifiers(baseColor, scheme);
       }
       return undefined;
     }
@@ -92,7 +212,8 @@ export class XmlHelper {
     const sys = el.getElementsByTagNameNS("*", "sysClr")[0];
     if (sys) {
       const lastClr = sys.getAttribute("lastClr");
-      return lastClr ? `#${lastClr}` : undefined;
+      if (!lastClr) return undefined;
+      return applyColorModifiers(`#${lastClr}`, sys);
     }
 
     return undefined;
@@ -183,6 +304,59 @@ export class XmlHelper {
     }
 
     return styles;
+  }
+
+  /**
+   * Parses a <gradFill> element into a GradientFill object.
+   * Returns null if the element is not a valid gradient.
+   */
+  static getGradientFromElement(
+    gradFill: Element | null,
+    themeColors?: Record<string, string>
+  ): import("../models/SlideElement").GradientFill | null {
+    if (!gradFill || gradFill.localName !== "gradFill") return null;
+
+    const gsLst = gradFill.getElementsByTagNameNS("*", "gsLst")[0];
+    if (!gsLst) return null;
+
+    const gsElements = Array.from(gsLst.getElementsByTagNameNS("*", "gs"));
+    if (gsElements.length === 0) return null;
+
+    const stops: { offset: number; color: string }[] = [];
+    for (const gs of gsElements) {
+      const pos = gs.getAttribute("pos");
+      const offset = pos ? Number(pos) / 1000 : 0; // pos is 0–100000 → 0–100
+      const color = XmlHelper.getColorFromElement(gs, themeColors);
+      if (color) {
+        stops.push({ offset, color });
+      }
+    }
+
+    if (stops.length === 0) return null;
+    stops.sort((a, b) => a.offset - b.offset);
+
+    // Determine gradient type and angle
+    const linEl = gradFill.getElementsByTagNameNS("*", "lin")[0];
+    const pathEl = gradFill.getElementsByTagNameNS("*", "path")[0];
+
+    if (pathEl) {
+      // Radial gradient
+      return { type: "gradient", gradientType: "radial", stops };
+    }
+
+    // Linear gradient (default)
+    let angle = 180; // default: top-to-bottom in CSS
+    if (linEl) {
+      const ang = linEl.getAttribute("ang");
+      if (ang) {
+        // OOXML: ang in 60000ths of a degree, 0 = left-to-right
+        // CSS: 0deg = bottom-to-top, 90deg = left-to-right
+        const oomlDeg = Number(ang) / 60000;
+        angle = (oomlDeg + 90) % 360;
+      }
+    }
+
+    return { type: "gradient", gradientType: "linear", stops, angle };
   }
 
   /** Allow host to provide a DOM parser (e.g., new (require('@xmldom/xmldom').DOMParser)()) */

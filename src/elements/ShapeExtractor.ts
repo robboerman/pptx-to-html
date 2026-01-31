@@ -77,17 +77,23 @@ export class ShapeExtractor {
     themeColors: Record<string, string>,
   ): Fill {
     if (spPr) {
-      // Check for explicit noFill first
-      const noFill = spPr.getElementsByTagNameNS("*", "noFill")[0];
-      if (noFill) {
-        return { type: "none" };
-      }
+      // Check direct children of spPr only (not descendants inside <ln> etc.)
+      for (const child of Array.from(spPr.children)) {
+        const tag = child.localName;
 
-      // Try solid fill
-      const solidFill = spPr.getElementsByTagNameNS("*", "solidFill")[0] ?? null;
-      const color = XmlHelper.getColorFromElement(solidFill, themeColors);
-      if (color) {
-        return { type: "solid", color };
+        if (tag === "noFill") {
+          return { type: "none" };
+        }
+
+        if (tag === "solidFill") {
+          const color = XmlHelper.getColorFromElement(child, themeColors);
+          if (color) return { type: "solid", color };
+        }
+
+        if (tag === "gradFill") {
+          const gradient = XmlHelper.getGradientFromElement(child, themeColors);
+          if (gradient) return gradient;
+        }
       }
     }
 
@@ -112,6 +118,11 @@ export class ShapeExtractor {
 
     const ln = spPr.getElementsByTagNameNS("*", "ln")[0];
     if (!ln) return undefined;
+
+    // Check for explicit <noFill> inside <ln>
+    for (const child of Array.from(ln.children)) {
+      if (child.localName === "noFill") return undefined;
+    }
 
     const borderFill = ln.getElementsByTagNameNS("*", "solidFill")[0] ?? null;
     const color = XmlHelper.getColorFromElement(borderFill, themeColors) ?? "transparent";
@@ -146,11 +157,15 @@ export class ShapeExtractor {
         }
       : undefined;
 
+    // Dash style
+    const prstDash = ln.getElementsByTagNameNS("*", "prstDash")[0];
+    const dashStyle = prstDash?.getAttribute("val") || undefined;
+
     // Only return stroke if there's meaningful content
-    if (color === "transparent" && !headEnd && !tailEnd && width <= 0) {
+    if (color === "transparent" && !headEnd && !tailEnd && !dashStyle && width <= 0) {
       return undefined;
     }
 
-    return { color, width, headEnd, tailEnd };
+    return { color, width, dashStyle, headEnd, tailEnd };
   }
 }

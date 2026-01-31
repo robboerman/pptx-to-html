@@ -206,6 +206,13 @@ export class SlideExtractor {
       return { type: "background", fill: { type: "solid", color } };
     }
 
+    // Try gradient fill
+    const gradFill = bgPr?.getElementsByTagNameNS("*", "gradFill")[0] || null;
+    const gradient = XmlHelper.getGradientFromElement(gradFill, themeColors);
+    if (gradient) {
+      return { type: "background", fill: gradient };
+    }
+
     // Try scheme color via bgRef
     const bgRef = bg.getElementsByTagNameNS("*", "bgRef")[0] || null;
     const schemeClr = bgRef?.getElementsByTagNameNS("*", "schemeClr")[0] || null;

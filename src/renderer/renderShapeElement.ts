@@ -33,6 +33,24 @@ function fillToCssBackground(fill: Fill): string {
   }
 }
 
+/** Map OOXML preset dash name to SVG stroke-dasharray */
+function dashStyleToSvg(dashStyle?: string): string | undefined {
+  if (!dashStyle || dashStyle === "solid") return undefined;
+  const map: Record<string, string> = {
+    dash: "8,4",
+    dot: "2,4",
+    dashDot: "8,4,2,4",
+    lgDash: "16,4",
+    lgDashDot: "16,4,2,4",
+    lgDashDotDot: "16,4,2,4,2,4",
+    sysDash: "4,2",
+    sysDot: "1,2",
+    sysDashDot: "4,2,1,2",
+    sysDashDotDot: "4,2,1,2,1,2",
+  };
+  return map[dashStyle];
+}
+
 /** Resolve stroke color: prefer explicit, fallback to fill color, then default */
 function resolveStrokeColor(el: ShapeElement): string {
   const strokeColor = el.stroke?.color;
@@ -91,32 +109,40 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
         const sw = el.stroke?.width && Number.isFinite(el.stroke.width) && el.stroke.width > 0
           ? el.stroke.width : 1;
         const lineColor = resolveStrokeColor(el);
+        const dashAttr = dashStyleToSvg(el.stroke?.dashStyle);
+        const dashStr = dashAttr ? ` stroke-dasharray="${dashAttr}"` : "";
+
+        // Determine line endpoints within the SVG viewBox
+        const svgW = Math.max(width, sw * 2);
+        const svgH = Math.max(height, sw * 2);
         const isVertical = width < 1;
         const isHorizontal = height < 1;
-
+        let x1: number, y1: number, x2: number, y2: number;
         if (isVertical) {
-            return `<div style="
-              position: absolute;
-              left: ${x - sw / 2}px;
-              top: ${y}px;
-              width: ${sw}px;
-              height: ${Math.max(height, sw)}px;
-              background-color: ${lineColor};
-              ${rotationStyle}
-            "></div>`;
+            x1 = svgW / 2; y1 = 0; x2 = svgW / 2; y2 = svgH;
+        } else if (isHorizontal) {
+            x1 = 0; y1 = svgH / 2; x2 = svgW; y2 = svgH / 2;
+        } else {
+            x1 = 0; y1 = 0; x2 = svgW; y2 = svgH;
         }
-        if (isHorizontal) {
-            return `<div style="
+
+        // Build arrowhead markers
+        const defs = buildMarkerDefs(el.stroke?.headEnd, el.stroke?.tailEnd, lineColor);
+        const markerStartAttr = defs.startId ? ` marker-start="url(#${defs.startId})"` : "";
+        const markerEndAttr = defs.endId ? ` marker-end="url(#${defs.endId})"` : "";
+
+        return `<svg viewBox="0 0 ${svgW} ${svgH}" style="
               position: absolute;
-              left: ${x}px;
-              top: ${y - sw / 2}px;
-              width: ${Math.max(width, sw)}px;
-              height: ${sw}px;
-              background-color: ${lineColor};
+              left: ${isVertical ? x - svgW / 2 : x}px;
+              top: ${isHorizontal ? y - svgH / 2 : y}px;
+              width: ${svgW}px;
+              height: ${svgH}px;
               ${rotationStyle}
-            "></div>`;
-        }
-        // Diagonal lines fall through to SVG rendering below
+            " overflow="visible">
+          ${defs.defs}
+          <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+                stroke="${lineColor}" stroke-width="${sw}"${dashStr}${markerStartAttr}${markerEndAttr} />
+        </svg>`;
     }
 
     if (el.shapeType === "roundRect") {
@@ -151,7 +177,8 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
       rotation,
       el.stroke?.headEnd,
       el.stroke?.tailEnd,
-      options.scaleStrokes === true
+      options.scaleStrokes === true,
+      dashStyleToSvg(el.stroke?.dashStyle)
     );
 }
 
@@ -167,7 +194,8 @@ function shapeSvg(
   rotationDeg?: number,
   headEnd?: ArrowHead,
   tailEnd?: ArrowHead,
-  scaleStrokes?: boolean
+  scaleStrokes?: boolean,
+  dashArray?: string
 ): string {
   const strokeColorOpt = stroke && stroke !== "transparent" ? stroke : undefined;
   const [typeRaw, ...rest] = raw.trim().split(/\s+/);
@@ -180,6 +208,7 @@ function shapeSvg(
   const sw = strokeWidthPx && strokeWidthPx > 0 ? strokeWidthPx : 2;
 
   const rotationStyle = rotationDeg ? `transform: rotate(${rotationDeg}deg); transform-origin: center;` : "";
+  const dashAttr = dashArray ? `stroke-dasharray="${dashArray}"` : "";
   const commonStyle = `
     position: absolute;
     left: ${x}px;
@@ -196,7 +225,7 @@ function shapeSvg(
       const markerEndAttr = defs.endId ? `marker-end=\"url(#${defs.endId})\"` : "";
       return `<svg viewBox="0 0 100 100" style="${commonStyle}" overflow="visible">
         ${defs.defs}
-        <path d="${data}" fill="none" stroke="${strokeColorOpt || "#000"}" stroke-width="${sw}" ${scaleStrokes ? "" : "vector-effect=\"non-scaling-stroke\""} ${markerStartAttr} ${markerEndAttr} />
+        <path d="${data}" fill="none" stroke="${strokeColorOpt || "#000"}" stroke-width="${sw}" ${dashAttr} ${scaleStrokes ? "" : "vector-effect=\"non-scaling-stroke\""} ${markerStartAttr} ${markerEndAttr} />
       </svg>`;
     }
 
@@ -250,6 +279,7 @@ function shapeSvg(
                     fill="none"
                     stroke="${strokeColorOpt || "#000"}"
                     stroke-width="${sw}"
+                    ${dashAttr}
                     ${scaleStrokes ? "" : "vector-effect=\"non-scaling-stroke\""}
                     ${markerStartAttr} ${markerEndAttr} />
         </svg>`;
@@ -258,7 +288,7 @@ function shapeSvg(
     case "POLYGON":
     default:
       return `<svg viewBox="0 0 100 100" style="${commonStyle}">
-        <polygon points="${data}" fill="${fill}" stroke="${strokeColorOpt ?? "none"}" stroke-width="${sw}" ${scaleStrokes ? "" : "vector-effect=\"non-scaling-stroke\""} />
+        <polygon points="${data}" fill="${fill}" stroke="${strokeColorOpt ?? "none"}" stroke-width="${sw}" ${dashAttr} ${scaleStrokes ? "" : "vector-effect=\"non-scaling-stroke\""} />
       </svg>`;
   }
 }
