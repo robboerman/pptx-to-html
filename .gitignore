@@ -4,6 +4,5 @@
 /coverage.data
 /coverage/
 
-# Build files
-/dist
+# Build files are committed so GitHub dependency installs work reliably
 examples/vite/node_modules/
