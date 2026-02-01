@@ -112,24 +112,54 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
         const dashAttr = dashStyleToSvg(el.stroke?.dashStyle);
         const dashStr = dashAttr ? ` stroke-dasharray="${dashAttr}"` : "";
 
-        // Determine line endpoints within the SVG viewBox
+        // Build arrowhead markers (refX=0: arrow base at line endpoint)
+        const defs = buildMarkerDefs(el.stroke?.headEnd, el.stroke?.tailEnd, lineColor);
+        const markerStartAttr = defs.startId ? ` marker-start="url(#${defs.startId})"` : "";
+        const markerEndAttr = defs.endId ? ` marker-end="url(#${defs.endId})"` : "";
+
+        // Shorten the line by each marker's pixel length so the arrow
+        // starts where the line ends, and the tip reaches the original endpoint
+        const startPull = defs.startLen * sw;
+        const endPull = defs.endLen * sw;
+
         const svgW = Math.max(width, sw * 2);
         const svgH = Math.max(height, sw * 2);
         const isVertical = width < 1;
         const isHorizontal = height < 1;
+
+        // Default line: top-left (start) to bottom-right (end).
+        // flipH swaps left/right, flipV swaps top/bottom.
+        const fh = el.flipH ?? false;
+        const fv = el.flipV ?? false;
+
         let x1: number, y1: number, x2: number, y2: number;
         if (isVertical) {
-            x1 = svgW / 2; y1 = 0; x2 = svgW / 2; y2 = svgH;
+            const cx = svgW / 2;
+            const topY = startPull;
+            const botY = svgH - endPull;
+            if (fv) {
+                x1 = cx; y1 = svgH - startPull; x2 = cx; y2 = endPull;
+            } else {
+                x1 = cx; y1 = topY; x2 = cx; y2 = botY;
+            }
         } else if (isHorizontal) {
-            x1 = 0; y1 = svgH / 2; x2 = svgW; y2 = svgH / 2;
+            const cy = svgH / 2;
+            if (fh) {
+                x1 = svgW - startPull; y1 = cy; x2 = endPull; y2 = cy;
+            } else {
+                x1 = startPull; y1 = cy; x2 = svgW - endPull; y2 = cy;
+            }
         } else {
-            x1 = 0; y1 = 0; x2 = svgW; y2 = svgH;
+            // Diagonal
+            let sx = 0, sy = 0, ex = svgW, ey = svgH;
+            if (fh) { sx = svgW; ex = 0; }
+            if (fv) { sy = svgH; ey = 0; }
+            const dx = ex - sx, dy = ey - sy;
+            const lineLen = Math.sqrt(dx * dx + dy * dy);
+            const ux = dx / lineLen, uy = dy / lineLen;
+            x1 = sx + startPull * ux; y1 = sy + startPull * uy;
+            x2 = ex - endPull * ux; y2 = ey - endPull * uy;
         }
-
-        // Build arrowhead markers
-        const defs = buildMarkerDefs(el.stroke?.headEnd, el.stroke?.tailEnd, lineColor);
-        const markerStartAttr = defs.startId ? ` marker-start="url(#${defs.startId})"` : "";
-        const markerEndAttr = defs.endId ? ` marker-end="url(#${defs.endId})"` : "";
 
         return `<svg viewBox="0 0 ${svgW} ${svgH}" style="
               position: absolute;
@@ -297,66 +327,85 @@ function buildMarkerDefs(
   headEnd: ArrowHead | undefined,
   tailEnd: ArrowHead | undefined,
   color: string
-): { defs: string; startId?: string; endId?: string } {
+): { defs: string; startId?: string; endId?: string; startLen: number; endLen: number } {
   const parts: string[] = [];
   let startId: string | undefined;
   let endId: string | undefined;
+  let startLen = 0;
+  let endLen = 0;
 
   if (headEnd && headEnd.type && headEnd.type !== "none") {
     startId = `mstart-${Math.random().toString(36).slice(2, 8)}`;
-    parts.push(markerDef(startId, headEnd, color));
+    const info = markerDef(startId, headEnd, color);
+    parts.push(info.svg);
+    startLen = info.len;
   }
   if (tailEnd && tailEnd.type && tailEnd.type !== "none") {
     endId = `mend-${Math.random().toString(36).slice(2, 8)}`;
-    parts.push(markerDef(endId, tailEnd, color));
+    const info = markerDef(endId, tailEnd, color);
+    parts.push(info.svg);
+    endLen = info.len;
   }
 
-  return { defs: parts.length ? `<defs>${parts.join("\n")}</defs>` : "", startId, endId };
+  return { defs: parts.length ? `<defs>${parts.join("\n")}</defs>` : "", startId, endId, startLen, endLen };
 }
 
-function markerDef(id: string, spec: ArrowHead, color: string): string {
-  const sizeFactor = mapLen(spec.len);
-  const base = 4 * sizeFactor;
-  const refX = base;
-  const refY = base / 2;
+function markerDef(id: string, spec: ArrowHead, color: string): { svg: string; len: number } {
+  const lenFactor = mapSize(spec.len);
+  const wFactor = mapSize(spec.w);
+  const len = 3 * lenFactor;
+  const w = 2.5 * wFactor;
+  // refX = 0: the arrow base is placed at the (shortened) line endpoint.
+  // The line is pulled back by markerLen * strokeWidth pixels so the
+  // arrow starts where the line ends, tip reaching the original endpoint.
+  const refX = 0;
+  const refY = w / 2;
 
+  let svg: string;
   switch ((spec.type || "triangle").toLowerCase()) {
     case "diamond":
-      return `<marker id="${id}" markerUnits="strokeWidth" markerWidth="${base}" markerHeight="${base}"
+      svg = `<marker id="${id}" markerUnits="strokeWidth" markerWidth="${len}" markerHeight="${w}"
                       refX="${refX}" refY="${refY}" orient="auto-start-reverse">
-                <polygon points="${base/2},0 ${base},${base/2} ${base/2},${base} 0,${base/2}" fill="${color}" />
+                <polygon points="${len/2},0 ${len},${w/2} ${len/2},${w} 0,${w/2}" fill="${color}" />
               </marker>`;
+      break;
     case "oval":
-      return `<marker id="${id}" markerUnits="strokeWidth" markerWidth="${base}" markerHeight="${base}"
+      svg = `<marker id="${id}" markerUnits="strokeWidth" markerWidth="${len}" markerHeight="${w}"
                       refX="${refX}" refY="${refY}" orient="auto-start-reverse">
-                <circle cx="${base/2}" cy="${base/2}" r="${base/2}" fill="${color}" />
+                <ellipse cx="${len/2}" cy="${w/2}" rx="${len/2}" ry="${w/2}" fill="${color}" />
               </marker>`;
-    case "stealth":
-      return `<marker id="${id}" markerUnits="strokeWidth" markerWidth="${base}" markerHeight="${base}"
+      break;
+    case "stealth": {
+      const notch = len * 0.35;
+      svg = `<marker id="${id}" markerUnits="strokeWidth" markerWidth="${len}" markerHeight="${w}"
                       refX="${refX}" refY="${refY}" orient="auto-start-reverse">
-                <polygon points="${base},${base/2} 0,0 0,${base}" fill="${color}" />
+                <polygon points="0,0 ${len},${w/2} 0,${w} ${notch},${w/2}" fill="${color}" />
               </marker>`;
+      break;
+    }
     case "arrow":
     case "triangle":
     default:
-      return `<marker id="${id}" markerUnits="strokeWidth" markerWidth="${base}" markerHeight="${base}"
+      svg = `<marker id="${id}" markerUnits="strokeWidth" markerWidth="${len}" markerHeight="${w}"
                       refX="${refX}" refY="${refY}" orient="auto-start-reverse">
-                <polygon points="0,0 ${base},${base/2} 0,${base}" fill="${color}" />
+                <polygon points="0,0 ${len},${w/2} 0,${w}" fill="${color}" />
               </marker>`;
+      break;
   }
+  return { svg, len };
 }
 
-function mapLen(len?: string): number {
-  switch ((len || "med").toLowerCase()) {
+function mapSize(size?: string): number {
+  switch ((size || "med").toLowerCase()) {
     case "sm":
     case "small":
-      return 1.5;
+      return 0.7;
     case "lg":
     case "large":
-      return 2.5;
+      return 1.4;
     case "med":
     case "medium":
     default:
-      return 2;
+      return 1.0;
   }
 }

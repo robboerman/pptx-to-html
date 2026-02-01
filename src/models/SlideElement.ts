@@ -107,6 +107,8 @@ export interface ShapeElement {
   fill: Fill;
   stroke?: StrokeStyle;
   rotationDeg?: number;
+  flipH?: boolean;
+  flipV?: boolean;
   cornerRadiusPct?: number;
   textContent?: ShapeTextContent;
 }
