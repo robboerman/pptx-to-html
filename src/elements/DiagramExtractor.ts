@@ -244,7 +244,7 @@ export class DiagramExtractor {
     let allText = "";
     let fontName = "Calibri";
     let fontSize = 12;
-    let fontColor = "#000000";
+    let fontColor: string | undefined;
     let hAlign: "left" | "center" | "right" | "justify" | undefined;
 
     const htmlParts: string[] = [];
@@ -268,7 +268,6 @@ export class DiagramExtractor {
         paraTexts.push(t);
         allText += t;
 
-        // Extract font properties from first run
         if (rPr) {
           const sz = rPr.getAttribute("sz");
           if (sz) {
@@ -297,11 +296,21 @@ export class DiagramExtractor {
 
     if (!allText.trim()) return undefined;
 
+    // Resolve text color from shape style fontRef if not set explicitly
+    if (!fontColor) {
+      const style = sp.getElementsByTagNameNS("*", "style")[0] ?? null;
+      const fontRef = style?.getElementsByTagNameNS("*", "fontRef")[0] ?? null;
+      if (fontRef) {
+        const color = XmlHelper.getColorFromElement(fontRef, themeColors);
+        if (color) fontColor = color;
+      }
+    }
+
     const html = htmlParts.join("<br/>");
 
     return {
       html,
-      font: { name: fontName, size: fontSize, color: fontColor },
+      font: { name: fontName, size: fontSize, color: fontColor ?? "#000000" },
       align: hAlign ? { horizontal: hAlign, vertical: "middle" } : { vertical: "middle" },
     };
   }

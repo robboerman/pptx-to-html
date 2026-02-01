@@ -277,7 +277,11 @@ export class TextExtractor {
             parts.push(it.kind === "ul" ? `<ul${style}>` : `<ol${style}>`);
             open = { kind: it.kind, listStyle: it.listStyle };
           }
-          parts.push(`<li style="margin-left:${it.lvl * 24}px${spacingCss ? `;${spacingCss}` : ""}">${it.html}</li>`);
+          // Split on <br> within a bulleted paragraph so each line gets its own bullet
+          const liSegments = it.html.split(/<br\s*\/?>/i).filter(s => s.trim());
+          for (const seg of liSegments) {
+            parts.push(`<li style="margin-left:${it.lvl * 24}px${spacingCss ? `;${spacingCss}` : ""}">${seg}</li>`);
+          }
         }
         if (open) parts.push(open.kind === "ul" ? "</ul>" : "</ol>");
         richHtml = parts.join("");
@@ -368,7 +372,7 @@ function getParagraphHtml(p: Element, themeColors: Record<string, string>): stri
         const u = rPr.getAttribute("u");
         if (u && u !== "none") styles.push("text-decoration:underline");
       }
-      const escaped = escapeHtml(t);
+      const escaped = escapeHtml(t).replace(/\n/g, "<br>");
       out += styles.length > 0
         ? `<span style="${styles.join(";")}">${escaped}</span>`
         : escaped;
