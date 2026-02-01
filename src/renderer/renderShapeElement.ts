@@ -72,7 +72,11 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
     const height = nf(el.size?.height, 0) / 9525;
 
     const rotation = el.rotationDeg && !isNaN(el.rotationDeg) ? el.rotationDeg : 0;
-    const rotationStyle = rotation ? `transform: rotate(${rotation}deg); transform-origin: center;` : "";
+    const transforms: string[] = [];
+    if (rotation) transforms.push(`rotate(${rotation}deg)`);
+    if (el.flipH) transforms.push(`scaleX(-1)`);
+    if (el.flipV) transforms.push(`scaleY(-1)`);
+    const rotationStyle = transforms.length ? `transform: ${transforms.join(" ")}; transform-origin: center;` : "";
     const strokeWidth = el.stroke?.width && Number.isFinite(el.stroke.width) && el.stroke.width > 0
       ? el.stroke.width
       : 1;
@@ -208,7 +212,9 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
       el.stroke?.headEnd,
       el.stroke?.tailEnd,
       options.scaleStrokes === true,
-      dashStyleToSvg(el.stroke?.dashStyle)
+      dashStyleToSvg(el.stroke?.dashStyle),
+      el.flipH,
+      el.flipV,
     );
 }
 
@@ -225,7 +231,9 @@ function shapeSvg(
   headEnd?: ArrowHead,
   tailEnd?: ArrowHead,
   scaleStrokes?: boolean,
-  dashArray?: string
+  dashArray?: string,
+  flipH?: boolean,
+  flipV?: boolean,
 ): string {
   const strokeColorOpt = stroke && stroke !== "transparent" ? stroke : undefined;
   const [typeRaw, ...rest] = raw.trim().split(/\s+/);
@@ -237,7 +245,11 @@ function shapeSvg(
   const svgWidth = width;
   const sw = strokeWidthPx && strokeWidthPx > 0 ? strokeWidthPx : 2;
 
-  const rotationStyle = rotationDeg ? `transform: rotate(${rotationDeg}deg); transform-origin: center;` : "";
+  const xforms: string[] = [];
+  if (rotationDeg) xforms.push(`rotate(${rotationDeg}deg)`);
+  if (flipH) xforms.push(`scaleX(-1)`);
+  if (flipV) xforms.push(`scaleY(-1)`);
+  const rotationStyle = xforms.length ? `transform: ${xforms.join(" ")}; transform-origin: center;` : "";
   const dashAttr = dashArray ? `stroke-dasharray="${dashArray}"` : "";
   const commonStyle = `
     position: absolute;
@@ -253,7 +265,7 @@ function shapeSvg(
       const defs = buildMarkerDefs(headEnd, tailEnd, strokeColorOpt || "#000");
       const markerStartAttr = defs.startId ? `marker-start=\"url(#${defs.startId})\"` : "";
       const markerEndAttr = defs.endId ? `marker-end=\"url(#${defs.endId})\"` : "";
-      return `<svg viewBox="0 0 100 100" style="${commonStyle}" overflow="visible">
+      return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="${commonStyle}" overflow="visible">
         ${defs.defs}
         <path d="${data}" fill="none" stroke="${strokeColorOpt || "#000"}" stroke-width="${sw}" ${dashAttr} ${scaleStrokes ? "" : "vector-effect=\"non-scaling-stroke\""} ${markerStartAttr} ${markerEndAttr} />
       </svg>`;
@@ -317,7 +329,7 @@ function shapeSvg(
 
     case "POLYGON":
     default:
-      return `<svg viewBox="0 0 100 100" style="${commonStyle}">
+      return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="${commonStyle}">
         <polygon points="${data}" fill="${fill}" stroke="${strokeColorOpt ?? "none"}" stroke-width="${sw}" ${dashAttr} ${scaleStrokes ? "" : "vector-effect=\"non-scaling-stroke\""} />
       </svg>`;
   }

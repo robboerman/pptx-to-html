@@ -4,6 +4,7 @@ import { renderImageElement } from "./renderImageElement";
 import { renderShapeElement } from "./renderShapeElement";
 import { renderTableElement } from "./renderTableElement";
 import { renderChartElement } from "./renderChartElement";
+import { renderDiagramElement } from "./renderDiagramElement";
 
 function backgroundFillToCss(fill: Fill): string {
   switch (fill.type) {
@@ -61,6 +62,7 @@ export class HtmlRenderer {
         case "shape": return renderShapeElement(el, { scaleStrokes: scaleToFit });
         case "table": return renderTableElement(el);
         case "chart": return renderChartElement(el as any);
+        case "diagram": return renderDiagramElement(el as any);
         default:
           if (typeof console !== "undefined" && console.warn) {
             console.warn(`[pptx-to-html] Unsupported element type: ${(el as any)?.type}`);

@@ -5,6 +5,7 @@ import { ImageExtractor } from "../elements/ImageExtractor";
 import { ShapeExtractor } from "../elements/ShapeExtractor";
 import { TableExtractor } from "../elements/TableExtractor";
 import { ChartExtractor } from "../elements/ChartExtractor";
+import { DiagramExtractor } from "../elements/DiagramExtractor";
 import { SlideElement, BackgroundElement, Fill } from "../models/SlideElement";
 
 /**
@@ -114,6 +115,7 @@ export class SlideExtractor {
       const slideImages = await ImageExtractor.extract(spTree, relsXml, this.zip, "ppt/slides");
       const slideTables = TableExtractor.extract(spTree, themeColors, themeTableStyles);
       const slideCharts = await ChartExtractor.extract(spTree, relsXml, this.zip, themeColors);
+      const slideDiagrams = await DiagramExtractor.extract(spTree, relsXml, this.zip, themeColors);
       const slideShapes = ShapeExtractor.extract(spTree, themeColors);
 
       slides.push([
@@ -125,6 +127,7 @@ export class SlideExtractor {
         ...layoutImages,
         ...layoutText,
         ...slideShapes,
+        ...slideDiagrams,
         ...slideTables,
         ...slideCharts,
         ...slideImages,

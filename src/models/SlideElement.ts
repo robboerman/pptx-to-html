@@ -192,10 +192,28 @@ export interface ChartElement {
   valueFormat?: string;
 }
 
+export interface DiagramShape {
+  presetGeometry: string;
+  position: Position;
+  size: Size;
+  fill: Fill;
+  stroke?: StrokeStyle;
+  rotationDeg?: number;
+  textContent?: ShapeTextContent;
+}
+
+export interface DiagramElement {
+  type: "diagram";
+  position: Position;
+  size: Size;
+  shapes: DiagramShape[];
+}
+
 export type SlideElement =
   | TextElement
   | ImageElement
   | ShapeElement
   | BackgroundElement
   | TableElement
-  | ChartElement;
+  | ChartElement
+  | DiagramElement;
