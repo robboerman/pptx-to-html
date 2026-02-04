@@ -64,10 +64,63 @@ export class ImageExtractor {
         size: { width: cx, height: cy }
       };
 
+      // Apply group coordinate transform if image is inside a group
+      const groupXfrm = this.getGroupTransform(pic);
+      if (groupXfrm) {
+        const { gx, gy, cx0, cy0, scaleX, scaleY } = groupXfrm;
+        const childRelX = (element.position.x - cx0) * scaleX;
+        const childRelY = (element.position.y - cy0) * scaleY;
+        element.position = { x: gx + childRelX, y: gy + childRelY };
+        element.size = { width: element.size.width * scaleX, height: element.size.height * scaleY };
+      }
+
       elements.push(element);
     }
 
     return elements;
+  }
+
+  /** Get group coordinate transform if the element is inside a <grpSp> */
+  private static getGroupTransform(el: Element): {
+    gx: number; gy: number; scaleX: number; scaleY: number;
+    cx0: number; cy0: number;
+  } | null {
+    let parent = el.parentElement;
+    while (parent) {
+      if (parent.localName === "grpSp") {
+        const grpSpPr = Array.from(parent.children).find(
+          (c) => c.localName === "grpSpPr",
+        ) as Element | undefined;
+        if (!grpSpPr) return null;
+
+        const grpXfrm = grpSpPr.getElementsByTagNameNS("*", "xfrm")[0];
+        if (!grpXfrm) return null;
+
+        const grpOff = grpXfrm.getElementsByTagNameNS("*", "off")[0];
+        const grpExt = grpXfrm.getElementsByTagNameNS("*", "ext")[0];
+        const chOff = grpXfrm.getElementsByTagNameNS("*", "chOff")[0];
+        const chExt = grpXfrm.getElementsByTagNameNS("*", "chExt")[0];
+        if (!grpOff || !grpExt || !chOff || !chExt) return null;
+
+        const gx = XmlHelper.getAttrAsNumber(grpOff, "x");
+        const gy = XmlHelper.getAttrAsNumber(grpOff, "y");
+        const gw = XmlHelper.getAttrAsNumber(grpExt, "cx");
+        const gh = XmlHelper.getAttrAsNumber(grpExt, "cy");
+        const cx0 = XmlHelper.getAttrAsNumber(chOff, "x");
+        const cy0 = XmlHelper.getAttrAsNumber(chOff, "y");
+        const cw = XmlHelper.getAttrAsNumber(chExt, "cx");
+        const ch = XmlHelper.getAttrAsNumber(chExt, "cy");
+
+        return {
+          gx, gy, cx0, cy0,
+          scaleX: cw > 0 ? gw / cw : 1,
+          scaleY: ch > 0 ? gh / ch : 1,
+        };
+      }
+      if (parent.localName === "spTree") return null;
+      parent = parent.parentElement;
+    }
+    return null;
   }
 
   /**
