@@ -1,4 +1,4 @@
-import { TableElement, TableRow, TableCell } from "../models/SlideElement";
+import { TableElement, TableRow, TableCell, computeZOrder } from "../models/SlideElement";
 import { XmlHelper } from "../core/XmlHelper";
 
 /**
@@ -83,6 +83,7 @@ export class TableExtractor {
         tableStyleId: tableStyleId,
         tableFillColor,
         style: mergedStyle ? { fills: mergedStyle.fills, fontColors: mergedStyle.fontColors } : undefined,
+        zOrder: computeZOrder(gf),
       });
     }
 

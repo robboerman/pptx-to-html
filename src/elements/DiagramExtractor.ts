@@ -6,6 +6,7 @@ import {
   Fill,
   StrokeStyle,
   ShapeTextContent,
+  computeZOrder,
 } from "../models/SlideElement";
 
 const DIAGRAM_URI =
@@ -85,6 +86,7 @@ export class DiagramExtractor {
         position: { x: frameX, y: frameY },
         size: { width: frameCx, height: frameCy },
         shapes,
+        zOrder: computeZOrder(gf),
       });
     }
 
@@ -130,6 +132,9 @@ export class DiagramExtractor {
       const rotAttr = xfrm.getAttribute("rot");
       const rotationDeg = rotAttr ? Number(rotAttr) / 60000 : undefined;
 
+      // 3D Rotation
+      const rotation3D = XmlHelper.get3DRotation(spPr);
+
       // Fill
       const fill = this.extractFill(spPr, sp, themeColors);
 
@@ -147,6 +152,7 @@ export class DiagramExtractor {
         fill,
         stroke,
         rotationDeg,
+        rotation3D,
         textContent,
       });
     }

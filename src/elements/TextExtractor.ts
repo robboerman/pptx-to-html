@@ -1,4 +1,4 @@
-import { TextElement } from "../models/SlideElement";
+import { TextElement, computeZOrder } from "../models/SlideElement";
 import { XmlHelper } from "../core/XmlHelper";
 
 /**
@@ -40,11 +40,16 @@ export class TextExtractor {
       const tIns = bodyPr?.getAttribute("tIns");
       const rIns = bodyPr?.getAttribute("rIns");
       const bIns = bodyPr?.getAttribute("bIns");
+      // OOXML default text insets when attributes are omitted
+      const DEFAULT_L_INS = 91440; // 0.1 inch
+      const DEFAULT_T_INS = 45720; // 0.05 inch
+      const DEFAULT_R_INS = 91440;
+      const DEFAULT_B_INS = 45720;
       const padding = {
-        left: lIns ? Number(lIns) / 9525 : 0,
-        top: tIns ? Number(tIns) / 9525 : 0,
-        right: rIns ? Number(rIns) / 9525 : 0,
-        bottom: bIns ? Number(bIns) / 9525 : 0,
+        left: Number(lIns ?? DEFAULT_L_INS) / 9525,
+        top: Number(tIns ?? DEFAULT_T_INS) / 9525,
+        right: Number(rIns ?? DEFAULT_R_INS) / 9525,
+        bottom: Number(bIns ?? DEFAULT_B_INS) / 9525,
       };
 
       const textRuns: string[] = [];
@@ -194,12 +199,14 @@ export class TextExtractor {
         const fallback1 = XmlHelper.getColorFromElement(defFill || null, themeColors);
         if (fallback1) color = fallback1;
 
-        // 3. spPr from shape
+        // 3. Shape style fontRef (text color inherited from shape style)
         if (!color) {
-          const spPr = shape.querySelector("p\\:spPr, spPr");
-          const shapeFill = spPr?.querySelector("*|solidFill");
-          const fallback2 = XmlHelper.getColorFromElement(shapeFill || null, themeColors);
-          if (fallback2) color = fallback2;
+          const shapeStyle = shape.getElementsByTagNameNS("*", "style")[0] ?? null;
+          const fontRef = shapeStyle?.getElementsByTagNameNS("*", "fontRef")[0] ?? null;
+          if (fontRef) {
+            const fontRefColor = XmlHelper.getColorFromElement(fontRef, themeColors);
+            if (fontRefColor) color = fontRefColor;
+          }
         }
       }
 
@@ -287,6 +294,9 @@ export class TextExtractor {
         richHtml = parts.join("");
       }
 
+      const spPr3d = shape.getElementsByTagNameNS("*", "spPr")[0];
+      const rotation3D = XmlHelper.get3DRotation(spPr3d);
+
       const element: TextElement = {
         type: "text",
         content,
@@ -295,14 +305,16 @@ export class TextExtractor {
         font: {
           name: fontName,
           size: fontSize,
-          color: color ?? "#000000" // fallback absoluto si quieres
+          color: color ?? "#000000"
         },
         align: {
           horizontal: horizontalAlign ?? "left",
           vertical: verticalAlign
         },
         padding,
-        html: richHtml
+        html: richHtml,
+        rotation3D,
+        zOrder: computeZOrder(shape),
       };
 
       // Apply group coordinate transform if shape is inside a group

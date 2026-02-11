@@ -62,6 +62,16 @@ export interface StrokeStyle {
   tailEnd?: ArrowHead;
 }
 
+// ── Shadow ─────────────────────────────────────────────────────────────────
+
+export interface ShadowStyle {
+  color: string;   // #RRGGBB
+  opacity: number;  // 0-1
+  offsetX: number;  // px
+  offsetY: number;  // px
+  blur: number;     // px
+}
+
 // ── Text Content (for text inside shapes) ───────────────────────────────────
 
 export interface ShapeTextContent {
@@ -69,6 +79,15 @@ export interface ShapeTextContent {
   font: { name: string; size: number; color: string };
   align?: { horizontal?: "left" | "center" | "right" | "justify"; vertical?: "top" | "middle" | "bottom" };
   padding?: { left: number; top: number; right: number; bottom: number };
+}
+
+// ── 3D Rotation ────────────────────────────────────────────────────────────
+
+export interface Rotation3D {
+  rotX?: number;       // X-axis rotation in degrees (from camera lat)
+  rotY?: number;       // Y-axis rotation in degrees (from camera lon)
+  rotZ?: number;       // Z-axis rotation in degrees (from camera rev)
+  perspective?: number; // Camera FOV in degrees (maps to CSS perspective)
 }
 
 // ── Element Types ───────────────────────────────────────────────────────────
@@ -89,6 +108,8 @@ export interface TextElement {
   };
   padding?: { left: number; top: number; right: number; bottom: number };
   html?: string;
+  rotation3D?: Rotation3D;
+  zOrder?: number;
 }
 
 export interface ImageElement {
@@ -97,6 +118,9 @@ export interface ImageElement {
   src: string;
   position: Position;
   size: Size;
+  zOrder?: number;
+  stroke?: StrokeStyle;
+  borderRadius?: number; // in px
 }
 
 export interface ShapeElement {
@@ -107,10 +131,13 @@ export interface ShapeElement {
   fill: Fill;
   stroke?: StrokeStyle;
   rotationDeg?: number;
+  rotation3D?: Rotation3D;
   flipH?: boolean;
   flipV?: boolean;
   cornerRadiusPct?: number;
   textContent?: ShapeTextContent;
+  shadow?: ShadowStyle;
+  zOrder?: number;
 }
 
 export interface BackgroundElement {
@@ -142,6 +169,7 @@ export interface TableElement {
   type: "table";
   position: Position;
   size: Size;
+  zOrder?: number;
   columns: number[];
   rows: TableRow[];
   tableStyle?: { firstRow?: boolean; firstCol?: boolean; lastRow?: boolean; lastCol?: boolean; bandRow?: boolean; bandCol?: boolean };
@@ -182,6 +210,7 @@ export interface ChartElement {
   chartType: ChartType;
   position: Position;
   size: Size;
+  zOrder?: number;
   categories: (string | number)[];
   series: ChartSeries[];
   palette?: string[];
@@ -199,6 +228,7 @@ export interface DiagramShape {
   fill: Fill;
   stroke?: StrokeStyle;
   rotationDeg?: number;
+  rotation3D?: Rotation3D;
   textContent?: ShapeTextContent;
 }
 
@@ -207,6 +237,7 @@ export interface DiagramElement {
   position: Position;
   size: Size;
   shapes: DiagramShape[];
+  zOrder?: number;
 }
 
 export type SlideElement =
@@ -217,3 +248,22 @@ export type SlideElement =
   | TableElement
   | ChartElement
   | DiagramElement;
+
+/** Helper to compute z-order from an element's position in the XML tree.
+ *  Walks up to the nearest direct child of spTree and returns its sibling index. */
+export function computeZOrder(element: Element): number {
+  let current: Element | null = element;
+  while (current?.parentElement) {
+    if (current.parentElement.localName === "spTree") {
+      let index = 0;
+      let sibling = current.previousElementSibling;
+      while (sibling) {
+        index++;
+        sibling = sibling.previousElementSibling;
+      }
+      return index;
+    }
+    current = current.parentElement;
+  }
+  return 0;
+}

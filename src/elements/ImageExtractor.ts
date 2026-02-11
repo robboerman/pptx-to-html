@@ -1,4 +1,4 @@
-import { ImageElement } from "../models/SlideElement";
+import { ImageElement, StrokeStyle, computeZOrder } from "../models/SlideElement";
 import { XmlHelper } from "../core/XmlHelper";
 import JSZip from "jszip";
 
@@ -17,7 +17,8 @@ export class ImageExtractor {
     spTree: Element | null,
     rels: Document,
     zip: JSZip,
-    basePath: string = "ppt/slides"
+    basePath: string = "ppt/slides",
+    themeColors: Record<string, string> = {},
   ): Promise<ImageElement[]> {
     if (!spTree) return [];
 
@@ -56,12 +57,61 @@ export class ImageExtractor {
       const cx = ext ? XmlHelper.getAttrAsNumber(ext, "cx") : 1000000;
       const cy = ext ? XmlHelper.getAttrAsNumber(ext, "cy") : 500000;
 
+      // Extract border/stroke from spPr > ln
+      const spPr = pic.getElementsByTagNameNS("*", "spPr")[0] ?? null;
+      let stroke: StrokeStyle | undefined;
+      let borderRadius: number | undefined;
+      if (spPr) {
+        const ln = spPr.getElementsByTagNameNS("*", "ln")[0] ?? null;
+        if (ln) {
+          let hasNoFill = false;
+          for (const child of Array.from(ln.children)) {
+            if (child.localName === "noFill") { hasNoFill = true; break; }
+          }
+          if (!hasNoFill) {
+            const borderFill = ln.getElementsByTagNameNS("*", "solidFill")[0] ?? null;
+            const borderColor = XmlHelper.getColorFromElement(borderFill, themeColors) ?? "transparent";
+            const wAttr = ln.getAttribute("w");
+            let borderWidth = 1;
+            if (wAttr) {
+              const w = Number(wAttr);
+              if (!isNaN(w)) borderWidth = w / 9525;
+            }
+            if (borderColor !== "transparent" || borderWidth > 0) {
+              stroke = { color: borderColor, width: borderWidth };
+            }
+          }
+        }
+        // Extract roundRect border radius
+        const prstGeom = spPr.getElementsByTagNameNS("*", "prstGeom")[0] ?? null;
+        const prst = prstGeom?.getAttribute("prst");
+        if (prst === "roundRect") {
+          const avLst = prstGeom?.getElementsByTagNameNS("*", "avLst")[0] ?? null;
+          const gd = avLst?.getElementsByTagNameNS("*", "gd")[0] ?? null;
+          if (gd?.getAttribute("name") === "adj") {
+            const fmla = gd.getAttribute("fmla") ?? "";
+            const match = fmla.match(/val\s+(\d+)/);
+            if (match) {
+              const adjVal = parseInt(match[1], 10);
+              const shorter = Math.min(cx, cy) / 9525;
+              borderRadius = (adjVal / 100000) * shorter;
+            }
+          } else {
+            // Default roundRect radius
+            borderRadius = Math.min(cx, cy) / 9525 * 0.1;
+          }
+        }
+      }
+
       const element: ImageElement = {
         type: "image",
         relId: embedId,
         src: dataUri,
         position: { x, y },
-        size: { width: cx, height: cy }
+        size: { width: cx, height: cy },
+        zOrder: computeZOrder(pic),
+        stroke,
+        borderRadius,
       };
 
       // Apply group coordinate transform if image is inside a group

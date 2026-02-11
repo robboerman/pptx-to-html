@@ -1,4 +1,4 @@
-import { ShapeElement, Fill, ArrowHead } from "../models/SlideElement";
+import { ShapeElement, Fill, ArrowHead, Rotation3D, ShadowStyle } from "../models/SlideElement";
 import { getSvgPathForShape } from "./shapePathMap";
 
 /** Extract a CSS-usable color string from a Fill, or fallback */
@@ -60,6 +60,16 @@ function resolveStrokeColor(el: ShapeElement): string {
   return "#000";
 }
 
+/** Convert ShadowStyle to CSS box-shadow value */
+function shadowToCss(shadow?: ShadowStyle): string {
+  if (!shadow) return "";
+  const { color, opacity, offsetX, offsetY, blur } = shadow;
+  const r = parseInt(color.slice(1, 3), 16) || 0;
+  const g = parseInt(color.slice(3, 5), 16) || 0;
+  const b = parseInt(color.slice(5, 7), 16) || 0;
+  return `box-shadow: ${offsetX.toFixed(1)}px ${offsetY.toFixed(1)}px ${blur.toFixed(1)}px rgba(${r},${g},${b},${opacity.toFixed(2)});`;
+}
+
 /**
  * Renders a shape element as an absolutely positioned HTML or SVG element.
  * Supports all recognized PPTX shape types using SVG when necessary.
@@ -73,7 +83,17 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
 
     const rotation = el.rotationDeg && !isNaN(el.rotationDeg) ? el.rotationDeg : 0;
     const transforms: string[] = [];
-    if (rotation) transforms.push(`rotate(${rotation}deg)`);
+    if (el.rotation3D) {
+      if (el.rotation3D.perspective && el.rotation3D.perspective > 0) {
+        const perspectiveVal = Math.round(45 / Math.tan((el.rotation3D.perspective * Math.PI) / 360));
+        transforms.push(`perspective(${perspectiveVal}px)`);
+      }
+      if (el.rotation3D.rotX) transforms.push(`rotateX(${el.rotation3D.rotX}deg)`);
+      if (el.rotation3D.rotY) transforms.push(`rotateY(${el.rotation3D.rotY}deg)`);
+      if (el.rotation3D.rotZ) transforms.push(`rotateZ(${el.rotation3D.rotZ}deg)`);
+    } else if (rotation) {
+      transforms.push(`rotate(${rotation}deg)`);
+    }
     if (el.flipH) transforms.push(`scaleX(-1)`);
     if (el.flipV) transforms.push(`scaleY(-1)`);
     const rotationStyle = transforms.length ? `transform: ${transforms.join(" ")}; transform-origin: center;` : "";
@@ -82,6 +102,7 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
       : 1;
     const strokeColor = el.stroke?.color ?? "transparent";
 
+    const shadowCss = shadowToCss(el.shadow);
     const style = `
     position: absolute;
     left: ${x}px;
@@ -89,6 +110,7 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
     width: ${width}px;
     height: ${height}px;
     ${rotationStyle}
+    ${shadowCss}
   `;
 
     const bgCss = fillToCssBackground(el.fill);
@@ -133,8 +155,23 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
 
         // Default line: top-left (start) to bottom-right (end).
         // flipH swaps left/right, flipV swaps top/bottom.
+        // Flips are handled in the coordinate computation below,
+        // so build a rotation-only style WITHOUT scaleX/scaleY to avoid double-flip.
         const fh = el.flipH ?? false;
         const fv = el.flipV ?? false;
+        const lineXforms: string[] = [];
+        if (el.rotation3D) {
+          if (el.rotation3D.perspective && el.rotation3D.perspective > 0) {
+            const pv = Math.round(45 / Math.tan((el.rotation3D.perspective * Math.PI) / 360));
+            lineXforms.push(`perspective(${pv}px)`);
+          }
+          if (el.rotation3D.rotX) lineXforms.push(`rotateX(${el.rotation3D.rotX}deg)`);
+          if (el.rotation3D.rotY) lineXforms.push(`rotateY(${el.rotation3D.rotY}deg)`);
+          if (el.rotation3D.rotZ) lineXforms.push(`rotateZ(${el.rotation3D.rotZ}deg)`);
+        } else if (rotation) {
+          lineXforms.push(`rotate(${rotation}deg)`);
+        }
+        const lineRotStyle = lineXforms.length ? `transform: ${lineXforms.join(" ")}; transform-origin: center;` : "";
 
         let x1: number, y1: number, x2: number, y2: number;
         if (isVertical) {
@@ -171,7 +208,7 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
               top: ${isHorizontal ? y - svgH / 2 : y}px;
               width: ${svgW}px;
               height: ${svgH}px;
-              ${rotationStyle}
+              ${lineRotStyle}
             " overflow="visible">
           ${defs.defs}
           <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
@@ -215,6 +252,7 @@ export function renderShapeElement(el: ShapeElement, options: { scaleStrokes?: b
       dashStyleToSvg(el.stroke?.dashStyle),
       el.flipH,
       el.flipV,
+      el.rotation3D,
     );
 }
 
@@ -234,6 +272,7 @@ function shapeSvg(
   dashArray?: string,
   flipH?: boolean,
   flipV?: boolean,
+  rotation3D?: Rotation3D,
 ): string {
   const strokeColorOpt = stroke && stroke !== "transparent" ? stroke : undefined;
   const [typeRaw, ...rest] = raw.trim().split(/\s+/);
@@ -246,7 +285,17 @@ function shapeSvg(
   const sw = strokeWidthPx && strokeWidthPx > 0 ? strokeWidthPx : 2;
 
   const xforms: string[] = [];
-  if (rotationDeg) xforms.push(`rotate(${rotationDeg}deg)`);
+  if (rotation3D) {
+    if (rotation3D.perspective && rotation3D.perspective > 0) {
+      const perspectiveVal = Math.round(45 / Math.tan((rotation3D.perspective * Math.PI) / 360));
+      xforms.push(`perspective(${perspectiveVal}px)`);
+    }
+    if (rotation3D.rotX) xforms.push(`rotateX(${rotation3D.rotX}deg)`);
+    if (rotation3D.rotY) xforms.push(`rotateY(${rotation3D.rotY}deg)`);
+    if (rotation3D.rotZ) xforms.push(`rotateZ(${rotation3D.rotZ}deg)`);
+  } else if (rotationDeg) {
+    xforms.push(`rotate(${rotationDeg}deg)`);
+  }
   if (flipH) xforms.push(`scaleX(-1)`);
   if (flipV) xforms.push(`scaleY(-1)`);
   const rotationStyle = xforms.length ? `transform: ${xforms.join(" ")}; transform-origin: center;` : "";
@@ -265,9 +314,13 @@ function shapeSvg(
       const defs = buildMarkerDefs(headEnd, tailEnd, strokeColorOpt || "#000");
       const markerStartAttr = defs.startId ? `marker-start=\"url(#${defs.startId})\"` : "";
       const markerEndAttr = defs.endId ? `marker-end=\"url(#${defs.endId})\"` : "";
+      // Closed paths (ending with Z) are filled shapes; open paths are connectors
+      const isClosed = /Z\s*$/i.test(data);
+      const pathFill = isClosed ? fill : "none";
+      const pathStroke = strokeColorOpt || (isClosed ? "none" : "#000");
       return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="${commonStyle}" overflow="visible">
         ${defs.defs}
-        <path d="${data}" fill="none" stroke="${strokeColorOpt || "#000"}" stroke-width="${sw}" ${dashAttr} ${scaleStrokes ? "" : "vector-effect=\"non-scaling-stroke\""} ${markerStartAttr} ${markerEndAttr} />
+        <path d="${data}" fill="${pathFill}" stroke="${pathStroke}" stroke-width="${sw}" ${dashAttr} ${scaleStrokes ? "" : "vector-effect=\"non-scaling-stroke\""} ${markerStartAttr} ${markerEndAttr} />
       </svg>`;
     }
 
@@ -365,8 +418,8 @@ function buildMarkerDefs(
 function markerDef(id: string, spec: ArrowHead, color: string): { svg: string; len: number } {
   const lenFactor = mapSize(spec.len);
   const wFactor = mapSize(spec.w);
-  const len = 3 * lenFactor;
-  const w = 2.5 * wFactor;
+  const len = 6 * lenFactor;
+  const w = 5 * wFactor;
   // refX = 0: the arrow base is placed at the (shortened) line endpoint.
   // The line is pulled back by markerLen * strokeWidth pixels so the
   // arrow starts where the line ends, tip reaching the original endpoint.

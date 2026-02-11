@@ -242,7 +242,25 @@ export function renderDiagramElement(el: DiagramElement): string {
   const defsBlock =
     allDefs.length > 0 ? `<defs>${allDefs.join("\n")}</defs>` : "";
 
-  return `<div style="position: absolute; left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px; overflow: visible;">
+  // Apply 3D transform to container if any shape has rotation3D
+  const first3D = el.shapes.find(s => s.rotation3D);
+  let containerTransform = "";
+  if (first3D?.rotation3D) {
+    const r3d = first3D.rotation3D;
+    const parts: string[] = [];
+    if (r3d.perspective && r3d.perspective > 0) {
+      const perspectiveVal = Math.round(45 / Math.tan((r3d.perspective * Math.PI) / 360));
+      parts.push(`perspective(${perspectiveVal}px)`);
+    }
+    if (r3d.rotX) parts.push(`rotateX(${r3d.rotX}deg)`);
+    if (r3d.rotY) parts.push(`rotateY(${r3d.rotY}deg)`);
+    if (r3d.rotZ) parts.push(`rotateZ(${r3d.rotZ}deg)`);
+    if (parts.length > 0) {
+      containerTransform = `transform: ${parts.join(" ")}; transform-origin: center;`;
+    }
+  }
+
+  return `<div style="position: absolute; left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px; overflow: visible; ${containerTransform}">
     <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="overflow: visible;">
       ${defsBlock}
       ${allShapes.join("\n")}

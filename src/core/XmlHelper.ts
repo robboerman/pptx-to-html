@@ -79,6 +79,7 @@ function applyColorModifiers(hex: string, colorEl: Element): string {
   let lumOff: number | undefined;
   let satMod: number | undefined;
   let satOff: number | undefined;
+  let alpha: number | undefined;
 
   for (const child of children) {
     const tag = child.localName;
@@ -91,6 +92,7 @@ function applyColorModifiers(hex: string, colorEl: Element): string {
       case "lumOff": lumOff = val; break;
       case "satMod": satMod = val; break;
       case "satOff": satOff = val; break;
+      case "alpha": alpha = val; break;
     }
   }
 
@@ -122,6 +124,10 @@ function applyColorModifiers(hex: string, colorEl: Element): string {
     [r, g, b] = hslToRgb(h, s, l);
   }
 
+  if (alpha !== undefined) {
+    const a = Math.max(0, Math.min(1, alpha / 100000));
+    return `rgba(${r},${g},${b},${a})`;
+  }
   return rgbToHex(r, g, b);
 }
 
@@ -357,6 +363,43 @@ export class XmlHelper {
     }
 
     return { type: "gradient", gradientType: "linear", stops, angle };
+  }
+
+  static get3DRotation(spPr: Element | null | undefined): import("../models/SlideElement").Rotation3D | undefined {
+    if (!spPr) return undefined;
+    const scene3d = spPr.getElementsByTagNameNS("*", "scene3d")[0];
+    if (!scene3d) return undefined;
+    const camera = scene3d.getElementsByTagNameNS("*", "camera")[0];
+    if (!camera) return undefined;
+    const rot = camera.getElementsByTagNameNS("*", "rot")[0];
+    if (!rot) return undefined;
+
+    const lat = rot.getAttribute("lat");
+    const lon = rot.getAttribute("lon");
+    const rev = rot.getAttribute("rev");
+
+    // OOXML camera sphere: lat change = look up/down = CSS rotateX,
+    // lon change = orbit horizontally = CSS rotateY
+    const rotX = lat ? Number(lat) / 60000 : undefined;
+    const rotY = lon ? Number(lon) / 60000 : undefined;
+    const rotZ = rev ? Number(rev) / 60000 : undefined;
+
+    if (rotX === undefined && rotY === undefined && rotZ === undefined) return undefined;
+
+    const prst = camera.getAttribute("prst") || "";
+    const isPerspectiveCamera = prst.startsWith("perspective");
+
+    let perspective: number | undefined = undefined;
+    if (isPerspectiveCamera) {
+      const fov = camera.getAttribute("fov");
+      const fovDeg = fov ? Number(fov) / 60000 : 45;
+      // fov=0 means no perspective distortion even for perspective presets
+      if (fovDeg > 0) {
+        perspective = fovDeg;
+      }
+    }
+
+    return { rotX, rotY, rotZ, perspective };
   }
 
   /** Allow host to provide a DOM parser (e.g., new (require('@xmldom/xmldom').DOMParser)()) */

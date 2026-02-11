@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { XmlHelper } from "../core/XmlHelper";
-import { ChartElement, ChartSeries, ChartType } from "../models/SlideElement";
+import { ChartElement, ChartSeries, ChartType, computeZOrder } from "../models/SlideElement";
 
 export class ChartExtractor {
   static async extract(
@@ -56,6 +56,7 @@ export class ChartExtractor {
         showDataLabels: parsed.showDataLabels,
         stackedMode: parsed.stackedMode,
         valueFormat: parsed.valueFormat,
+        zOrder: computeZOrder(gf),
       });
     }
 

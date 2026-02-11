@@ -1,4 +1,4 @@
-import { ShapeElement, Fill, StrokeStyle, ArrowHead } from "../models/SlideElement";
+import { ShapeElement, Fill, StrokeStyle, ArrowHead, ShadowStyle, computeZOrder } from "../models/SlideElement";
 import { XmlHelper } from "../core/XmlHelper";
 
 /**
@@ -26,7 +26,10 @@ export class ShapeExtractor {
       if (this.isInsideGroup(shape)) continue;
 
       const el = this.parseShapeElement(shape, themeColors);
-      if (el) elements.push(el);
+      if (el) {
+        el.zOrder = computeZOrder(shape);
+        elements.push(el);
+      }
     }
 
     // Extract group shapes with proper coordinate transforms
@@ -85,7 +88,9 @@ export class ShapeExtractor {
     const spPr = shape.getElementsByTagNameNS("*", "spPr")[0];
 
     const fill = this.extractFill(spPr, shape, themeColors);
-    const stroke = this.extractStroke(spPr, themeColors);
+    const stroke = this.extractStroke(spPr, shape, themeColors);
+    const rotation3D = XmlHelper.get3DRotation(spPr);
+    const shadow = this.extractShadow(spPr);
 
     return {
       type: "shape",
@@ -95,9 +100,11 @@ export class ShapeExtractor {
       fill,
       stroke,
       rotationDeg,
+      rotation3D,
       flipH: flipH || undefined,
       flipV: flipV || undefined,
       cornerRadiusPct,
+      shadow,
     };
   }
 
@@ -109,6 +116,7 @@ export class ShapeExtractor {
     for (const grp of Array.from(groups)) {
       // Only process top-level groups (not nested)
       if (this.isInsideGroup(grp)) continue;
+      const grpZOrder = computeZOrder(grp);
 
       const grpSpPr = grp.getElementsByTagNameNS("*", "grpSpPr")[0];
       if (!grpSpPr) continue;
@@ -174,6 +182,7 @@ export class ShapeExtractor {
           el.flipH = !(el.flipH ?? false) || undefined;
         }
 
+        el.zOrder = grpZOrder;
         elements.push(el);
       }
     }
@@ -223,6 +232,7 @@ export class ShapeExtractor {
   /** Extract stroke/line properties */
   private static extractStroke(
     spPr: Element | undefined,
+    shape: Element,
     themeColors: Record<string, string>,
   ): StrokeStyle | undefined {
     if (!spPr) return undefined;
@@ -245,6 +255,17 @@ export class ShapeExtractor {
       const w = Number(wAttr);
       if (!isNaN(w)) {
         width = w / 9525;
+      }
+    } else {
+      // Resolve width from style lnRef index when not explicitly set
+      const style = shape.getElementsByTagNameNS("*", "style")[0] ?? null;
+      const lnRef = style?.getElementsByTagNameNS("*", "lnRef")[0] ?? null;
+      const lnIdx = lnRef ? parseInt(lnRef.getAttribute("idx") || "0", 10) : 0;
+      // Standard theme line widths: idx=1: 9525 EMU, idx=2: 25400 EMU, idx=3: 38100 EMU
+      const themeLineWidths: Record<number, number> = { 1: 9525, 2: 25400, 3: 38100 };
+      const themeW = themeLineWidths[lnIdx];
+      if (themeW) {
+        width = themeW / 9525;
       }
     }
 
@@ -278,5 +299,41 @@ export class ShapeExtractor {
     }
 
     return { color, width, dashStyle, headEnd, tailEnd };
+  }
+
+  /** Extract outer shadow from shape properties */
+  private static extractShadow(spPr: Element | undefined): ShadowStyle | undefined {
+    if (!spPr) return undefined;
+    const effectLst = spPr.getElementsByTagNameNS("*", "effectLst")[0];
+    if (!effectLst) return undefined;
+    const outerShdw = effectLst.getElementsByTagNameNS("*", "outerShdw")[0];
+    if (!outerShdw) return undefined;
+
+    const blurRad = parseInt(outerShdw.getAttribute("blurRad") || "0", 10) / 9525;
+    const dist = parseInt(outerShdw.getAttribute("dist") || "0", 10) / 9525;
+    const dirAttr = parseInt(outerShdw.getAttribute("dir") || "0", 10);
+    // OOXML direction: 0=right, 5400000=down, in 60000ths of a degree
+    const angleRad = (dirAttr / 60000) * (Math.PI / 180);
+    const offsetX = dist * Math.cos(angleRad);
+    const offsetY = dist * Math.sin(angleRad);
+
+    // Extract color and alpha
+    let color = "#000000";
+    let opacity = 1;
+    const prstClr = outerShdw.getElementsByTagNameNS("*", "prstClr")[0];
+    const srgbClr = outerShdw.getElementsByTagNameNS("*", "srgbClr")[0];
+    if (prstClr) {
+      const val = prstClr.getAttribute("val");
+      if (val === "black") color = "#000000";
+      else if (val === "white") color = "#FFFFFF";
+      const alpha = prstClr.getElementsByTagNameNS("*", "alpha")[0];
+      if (alpha) opacity = parseInt(alpha.getAttribute("val") || "100000", 10) / 100000;
+    } else if (srgbClr) {
+      color = "#" + (srgbClr.getAttribute("val") || "000000");
+      const alpha = srgbClr.getElementsByTagNameNS("*", "alpha")[0];
+      if (alpha) opacity = parseInt(alpha.getAttribute("val") || "100000", 10) / 100000;
+    }
+
+    return { color, opacity, offsetX, offsetY, blur: blurRad };
   }
 }

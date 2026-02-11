@@ -32,30 +32,32 @@ export function getSvgPathForShape(type: string): string {
       return "LINE_ARROW 0,0 100,100";
 
     // ▸ Bent connectors
+    // Default routing: top-right (100,0) to bottom-left (0,100).
+    // flipH/flipV applied via CSS transform reverses direction.
     case "bentConnector2":
-      return "POLYLINE 0,50 50,50 50,100";
+      return "POLYLINE 100,0 0,0 0,100";
 
     case "bentConnector3":
-      return "POLYLINE_ARROW 0,50 40,50 40,70 100,70";
+      return "POLYLINE_ARROW 100,0 100,50 0,50 0,100";
 
     case "bentConnector4":
-      return "POLYLINE 0,30 30,30 30,70 70,70 70,100";
+      return "POLYLINE 100,0 100,33 50,33 50,67 0,67 0,100";
 
     case "bentConnector5":
-      return "POLYLINE 0,20 30,20 30,50 60,50 60,80 100,80";
+      return "POLYLINE 100,0 75,0 75,50 25,50 25,100 0,100";
 
-    // ▸ Curved connectors
+    // ▸ Curved connectors (paths span from (0,0) start to (100,100) end)
     case "curvedConnector2":
-      return "PATH M0,50 Q50,0 100,50";
+      return "PATH M0,0 Q100,0 100,100";
 
     case "curvedConnector3":
-      return "PATH M0,50 Q25,0 50,50 Q75,100 100,50";
+      return "PATH M0,0 C50,0 50,100 100,100";
 
     case "curvedConnector4":
-      return "PATH M0,40 Q20,0 40,40 Q60,80 80,40 Q90,20 100,40";
+      return "PATH M0,0 C33,0 33,100 50,50 C67,0 67,100 100,100";
 
     case "curvedConnector5":
-      return "PATH M0,50 Q20,20 40,50 Q60,80 80,50 Q90,40 100,50";
+      return "PATH M0,0 C25,0 25,50 50,50 C75,50 75,100 100,100";
 
     // ▸ Notched, bent, and curved arrows
     case "bentArrow":

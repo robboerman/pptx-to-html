@@ -14,6 +14,20 @@ export function renderTextElement(el: TextElement): string {
   const pad = el.padding || { left: 0, top: 0, right: 0, bottom: 0 };
   const textAlign = el.align?.horizontal || "left";
   const justify = el.align?.vertical === "middle" ? "center" : el.align?.vertical === "bottom" ? "flex-end" : "flex-start";
+  const transforms: string[] = [];
+  if (el.rotation3D) {
+    if (el.rotation3D.perspective && el.rotation3D.perspective > 0) {
+      const perspectiveVal = Math.round(45 / Math.tan((el.rotation3D.perspective * Math.PI) / 360));
+      transforms.push(`perspective(${perspectiveVal}px)`);
+    }
+    if (el.rotation3D.rotX) transforms.push(`rotateX(${el.rotation3D.rotX}deg)`);
+    if (el.rotation3D.rotY) transforms.push(`rotateY(${el.rotation3D.rotY}deg)`);
+    if (el.rotation3D.rotZ) transforms.push(`rotateZ(${el.rotation3D.rotZ}deg)`);
+  }
+  const transformStyle = transforms.length
+    ? `transform: ${transforms.join(" ")}; transform-origin: center;`
+    : "";
+
   const inner = el.html ? el.html : escape(el.content);
   return `<div style="
     position: absolute;
@@ -31,6 +45,7 @@ export function renderTextElement(el: TextElement): string {
     color: ${el.font?.color || "#000"};
     overflow: visible;
     white-space: pre-wrap;
+    ${transformStyle}
   ">${inner}</div>`;
 }
 

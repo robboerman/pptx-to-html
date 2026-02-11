@@ -101,22 +101,33 @@ export class SlideExtractor {
 
       // Extract elements from master → layout → slide (respecting z-order: back to front)
       const masterText = masterSpTree ? TextExtractor.extract(masterSpTree, themeColors, { context: "master" }) : [];
-      const masterImages = masterSpTree && masterRelsXml ? await ImageExtractor.extract(masterSpTree, masterRelsXml, this.zip, "ppt/slideMasters") : [];
+      const masterImages = masterSpTree && masterRelsXml ? await ImageExtractor.extract(masterSpTree, masterRelsXml, this.zip, "ppt/slideMasters", themeColors) : [];
       const masterShapes = masterSpTree ? ShapeExtractor.extract(masterSpTree, themeColors) : [];
 
       const layoutText = layoutSpTree ? TextExtractor.extract(layoutSpTree, themeColors, { context: "layout" }) : [];
-      const layoutImages = layoutSpTree && layoutRelsXml ? await ImageExtractor.extract(layoutSpTree, layoutRelsXml, this.zip, "ppt/slideLayouts") : [];
+      const layoutImages = layoutSpTree && layoutRelsXml ? await ImageExtractor.extract(layoutSpTree, layoutRelsXml, this.zip, "ppt/slideLayouts", themeColors) : [];
       const layoutShapes = layoutSpTree ? ShapeExtractor.extract(layoutSpTree, themeColors) : [];
 
       const masterGeom = this.extractPlaceholderGeom(masterSpTree);
       const layoutGeom = this.extractPlaceholderGeom(layoutSpTree);
       const mergedGeom: Record<string, { x: number; y: number; cx: number; cy: number; fontSize?: number }> = { ...masterGeom, ...layoutGeom };
       const slideText = TextExtractor.extract(spTree, themeColors, { context: "slide", placeholderGeom: mergedGeom });
-      const slideImages = await ImageExtractor.extract(spTree, relsXml, this.zip, "ppt/slides");
+      const slideImages = await ImageExtractor.extract(spTree, relsXml, this.zip, "ppt/slides", themeColors);
       const slideTables = TableExtractor.extract(spTree, themeColors, themeTableStyles);
       const slideCharts = await ChartExtractor.extract(spTree, relsXml, this.zip, themeColors);
       const slideDiagrams = await DiagramExtractor.extract(spTree, relsXml, this.zip, themeColors);
       const slideShapes = ShapeExtractor.extract(spTree, themeColors);
+
+      // Combine slide-level elements and sort by XML document order (zOrder)
+      const slideElements: SlideElement[] = [
+        ...slideShapes,
+        ...slideDiagrams,
+        ...slideTables,
+        ...slideCharts,
+        ...slideImages,
+        ...slideText,
+      ];
+      slideElements.sort((a, b) => ((a as any).zOrder ?? 0) - ((b as any).zOrder ?? 0));
 
       slides.push([
         ...(bgElement ? [bgElement] : []),
@@ -126,12 +137,7 @@ export class SlideExtractor {
         ...layoutShapes,
         ...layoutImages,
         ...layoutText,
-        ...slideShapes,
-        ...slideDiagrams,
-        ...slideTables,
-        ...slideCharts,
-        ...slideImages,
-        ...slideText,
+        ...slideElements,
       ]);
     }
 
